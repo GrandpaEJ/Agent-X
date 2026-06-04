@@ -14,6 +14,7 @@ typedef enum {
     F_21c, F_22c, F_21t, F_22t, F_21s, F_22b, F_23x,
     F_35c, F_3rc, F_31i, F_51l, F_31t, F_21h, F_22s,
     F_22cs, F_35ms, F_3rms,
+    F_22x, F_32x, F_12x_2, F_22s_multi,
 } insn_fmt;
 
 typedef struct { uint8_t op, fmt, kind; const char *name; } op_entry;
@@ -21,8 +22,14 @@ typedef struct { uint8_t op, fmt, kind; const char *name; } op_entry;
 static const op_entry optab[] = {
     FMT(0x00, F_10x, K_NONE, "nop"),
     FMT(0x01, F_12x, K_NONE, "move"),
-    FMT(0x02, F_12x, K_NONE, "move-wide"),
-    FMT(0x03, F_12x, K_NONE, "move-object"),
+    FMT(0x02, F_22x, K_NONE, "move/from16"),
+    FMT(0x03, F_32x, K_NONE, "move/16"),
+    FMT(0x04, F_12x, K_NONE, "move-wide"),
+    FMT(0x05, F_22x, K_NONE, "move-wide/from16"),
+    FMT(0x06, F_32x, K_NONE, "move-wide/16"),
+    FMT(0x07, F_12x, K_NONE, "move-object"),
+    FMT(0x08, F_22x, K_NONE, "move-object/from16"),
+    FMT(0x09, F_32x, K_NONE, "move-object/16"),
     FMT(0x0A, F_11x, K_NONE, "move-result"),
     FMT(0x0B, F_11x, K_NONE, "move-result-wide"),
     FMT(0x0C, F_11x, K_NONE, "move-result-object"),
@@ -34,9 +41,13 @@ static const op_entry optab[] = {
     FMT(0x12, F_11n, K_NONE, "const/4"),
     FMT(0x13, F_21s, K_NONE, "const/16"),
     FMT(0x14, F_31i, K_NONE, "const"),
-    FMT(0x15, F_21s, K_NONE, "const/high16"),
+    FMT(0x15, F_21h, K_NONE, "const/high16"),
+    FMT(0x16, F_21s, K_NONE, "const-wide/16"),
+    FMT(0x17, F_31i, K_NONE, "const-wide/32"),
+    FMT(0x18, F_51l, K_NONE, "const-wide"),
+    FMT(0x19, F_21h, K_NONE, "const-wide/high16"),
     FMT(0x1A, F_21c, K_STRING, "const-string"),
-    FMT(0x1B, F_21c, K_STRING, "const-string-jumbo"),
+    FMT(0x1B, F_21c, K_STRING, "const-string/jumbo"),
     FMT(0x1C, F_21c, K_TYPE, "const-class"),
     FMT(0x1D, F_11x, K_NONE, "monitor-enter"),
     FMT(0x1E, F_11x, K_NONE, "monitor-exit"),
@@ -123,8 +134,110 @@ static const op_entry optab[] = {
     FMT(0x76, F_3rc, K_METHOD, "invoke-direct/range"),
     FMT(0x77, F_3rc, K_METHOD, "invoke-static/range"),
     FMT(0x78, F_3rc, K_METHOD, "invoke-interface/range"),
+    FMT(0x7B, F_12x, K_NONE, "neg-int"),
+    FMT(0x7C, F_12x, K_NONE, "not-int"),
+    FMT(0x7D, F_12x, K_NONE, "neg-long"),
+    FMT(0x7E, F_12x, K_NONE, "not-long"),
+    FMT(0x7F, F_12x, K_NONE, "neg-float"),
+    FMT(0x80, F_12x, K_NONE, "not-float"),
+    FMT(0x81, F_12x, K_NONE, "neg-double"),
+    FMT(0x82, F_12x, K_NONE, "not-double"),
+    FMT(0x83, F_12x, K_NONE, "int-to-long"),
+    FMT(0x84, F_12x, K_NONE, "int-to-float"),
+    FMT(0x85, F_12x, K_NONE, "int-to-double"),
+    FMT(0x86, F_12x, K_NONE, "long-to-int"),
+    FMT(0x87, F_12x, K_NONE, "long-to-float"),
+    FMT(0x88, F_12x, K_NONE, "long-to-double"),
+    FMT(0x89, F_12x, K_NONE, "float-to-int"),
+    FMT(0x8A, F_12x, K_NONE, "float-to-long"),
+    FMT(0x8B, F_12x, K_NONE, "float-to-double"),
+    FMT(0x8C, F_12x, K_NONE, "double-to-int"),
+    FMT(0x8D, F_12x, K_NONE, "double-to-long"),
+    FMT(0x8E, F_12x, K_NONE, "double-to-float"),
+    FMT(0x8F, F_12x, K_NONE, "int-to-byte"),
+    FMT(0x90, F_12x, K_NONE, "int-to-char"),
+    FMT(0x91, F_12x, K_NONE, "int-to-short"),
+    FMT(0x92, F_23x, K_NONE, "add-int"),
+    FMT(0x93, F_23x, K_NONE, "sub-int"),
+    FMT(0x94, F_23x, K_NONE, "mul-int"),
+    FMT(0x95, F_23x, K_NONE, "div-int"),
+    FMT(0x96, F_23x, K_NONE, "rem-int"),
+    FMT(0x97, F_23x, K_NONE, "and-int"),
+    FMT(0x98, F_23x, K_NONE, "or-int"),
+    FMT(0x99, F_23x, K_NONE, "xor-int"),
+    FMT(0x9A, F_23x, K_NONE, "shl-int"),
+    FMT(0x9B, F_23x, K_NONE, "shr-int"),
+    FMT(0x9C, F_23x, K_NONE, "ushr-int"),
+    FMT(0x9D, F_23x, K_NONE, "add-long"),
+    FMT(0x9E, F_23x, K_NONE, "sub-long"),
+    FMT(0x9F, F_23x, K_NONE, "mul-long"),
+    FMT(0xA0, F_23x, K_NONE, "div-long"),
+    FMT(0xA1, F_23x, K_NONE, "rem-long"),
+    FMT(0xA2, F_23x, K_NONE, "and-long"),
+    FMT(0xA3, F_23x, K_NONE, "or-long"),
+    FMT(0xA4, F_23x, K_NONE, "xor-long"),
+    FMT(0xA5, F_23x, K_NONE, "shl-long"),
+    FMT(0xA6, F_23x, K_NONE, "shr-long"),
+    FMT(0xA7, F_23x, K_NONE, "ushr-long"),
+    FMT(0xA8, F_23x, K_NONE, "add-float"),
+    FMT(0xA9, F_23x, K_NONE, "sub-float"),
+    FMT(0xAA, F_23x, K_NONE, "mul-float"),
+    FMT(0xAB, F_23x, K_NONE, "div-float"),
+    FMT(0xAC, F_23x, K_NONE, "rem-float"),
+    FMT(0xAD, F_23x, K_NONE, "add-double"),
+    FMT(0xAE, F_23x, K_NONE, "sub-double"),
+    FMT(0xAF, F_23x, K_NONE, "mul-double"),
+    FMT(0xB0, F_23x, K_NONE, "div-double"),
+    FMT(0xB1, F_23x, K_NONE, "rem-double"),
+    FMT(0xB2, F_12x, K_NONE, "add-int/2addr"),
+    FMT(0xB3, F_12x, K_NONE, "sub-int/2addr"),
+    FMT(0xB4, F_12x, K_NONE, "mul-int/2addr"),
+    FMT(0xB5, F_12x, K_NONE, "div-int/2addr"),
+    FMT(0xB6, F_12x, K_NONE, "rem-int/2addr"),
+    FMT(0xB7, F_12x, K_NONE, "and-int/2addr"),
+    FMT(0xB8, F_12x, K_NONE, "or-int/2addr"),
+    FMT(0xB9, F_12x, K_NONE, "xor-int/2addr"),
+    FMT(0xBA, F_12x, K_NONE, "shl-int/2addr"),
+    FMT(0xBB, F_12x, K_NONE, "shr-int/2addr"),
+    FMT(0xBC, F_12x, K_NONE, "ushr-int/2addr"),
+    FMT(0xBD, F_12x, K_NONE, "add-long/2addr"),
+    FMT(0xBE, F_12x, K_NONE, "sub-long/2addr"),
+    FMT(0xBF, F_12x, K_NONE, "mul-long/2addr"),
+    FMT(0xC0, F_12x, K_NONE, "div-long/2addr"),
+    FMT(0xC1, F_12x, K_NONE, "rem-long/2addr"),
+    FMT(0xC2, F_12x, K_NONE, "and-long/2addr"),
+    FMT(0xC3, F_12x, K_NONE, "or-long/2addr"),
+    FMT(0xC4, F_12x, K_NONE, "xor-long/2addr"),
+    FMT(0xC5, F_12x, K_NONE, "shl-long/2addr"),
+    FMT(0xC6, F_12x, K_NONE, "shr-long/2addr"),
+    FMT(0xC7, F_12x, K_NONE, "ushr-long/2addr"),
+    FMT(0xC8, F_12x, K_NONE, "add-float/2addr"),
+    FMT(0xC9, F_12x, K_NONE, "sub-float/2addr"),
+    FMT(0xCA, F_12x, K_NONE, "mul-float/2addr"),
+    FMT(0xCB, F_12x, K_NONE, "div-float/2addr"),
+    FMT(0xCC, F_12x, K_NONE, "rem-float/2addr"),
+    FMT(0xCD, F_12x, K_NONE, "add-double/2addr"),
+    FMT(0xCE, F_12x, K_NONE, "sub-double/2addr"),
+    FMT(0xCF, F_12x, K_NONE, "mul-double/2addr"),
     FMT(0xD0, F_22s, K_NONE, "add-int/lit16"),
+    FMT(0xD1, F_22s, K_NONE, "rsub-int/lit16"),
+    FMT(0xD2, F_22s, K_NONE, "mul-int/lit16"),
+    FMT(0xD3, F_22s, K_NONE, "div-int/lit16"),
+    FMT(0xD4, F_22s, K_NONE, "rem-int/lit16"),
+    FMT(0xD5, F_22s, K_NONE, "and-int/lit16"),
+    FMT(0xD6, F_22s, K_NONE, "or-int/lit16"),
+    FMT(0xD7, F_22s, K_NONE, "xor-int/lit16"),
     FMT(0xD8, F_22b, K_NONE, "add-int/lit8"),
+    FMT(0xD9, F_22b, K_NONE, "rsub-int/lit8"),
+    FMT(0xDA, F_22b, K_NONE, "mul-int/lit8"),
+    FMT(0xDB, F_22b, K_NONE, "div-int/lit8"),
+    FMT(0xDC, F_22b, K_NONE, "rem-int/lit8"),
+    FMT(0xDD, F_22b, K_NONE, "and-int/lit8"),
+    FMT(0xDE, F_22b, K_NONE, "or-int/lit8"),
+    FMT(0xDF, F_22b, K_NONE, "xor-int/lit8"),
+    FMT(0xE0, F_22b, K_NONE, "shl-int/lit8"),
+    FMT(0xE1, F_22b, K_NONE, "shr-int/lit8"),
+    FMT(0xE2, F_22b, K_NONE, "ushr-int/lit8"),
 };
 
 static const op_entry *find_op(uint8_t op) {
@@ -154,9 +267,8 @@ int dex_decode_insn(const uint16_t *insns, int offset, uint32_t *out_op,
     case F_10x:
         break;
     case F_12x: {
-        uint8_t nA = (arg >> 4) & 0x0F;
-        uint8_t nB = arg & 0x0F;
-        vA = nA; vB = nB;
+        vA = arg & 0x0F;
+        vB = (arg >> 4) & 0x0F;
         break;
     }
     case F_11n: {
@@ -195,8 +307,8 @@ int dex_decode_insn(const uint16_t *insns, int offset, uint32_t *out_op,
     case F_22c:
     case F_22t:
     case F_22s: {
-        vA = (arg >> 4) & 0x0F;
-        vB = arg & 0x0F;
+        vA = arg & 0x0F;
+        vB = (arg >> 4) & 0x0F;
         ref = insns[offset + 1];
         words = 2;
         break;
@@ -255,6 +367,18 @@ int dex_decode_insn(const uint16_t *insns, int offset, uint32_t *out_op,
         ref = (uint32_t)insns[offset + 1] | ((uint32_t)insns[offset + 2] << 16);
         words = 3;
         break;
+    case F_22x: {
+        vA = arg;
+        vB = insns[offset + 1];
+        words = 2;
+        break;
+    }
+    case F_32x: {
+        vA = insns[offset + 1];
+        vB = insns[offset + 2];
+        words = 3;
+        break;
+    }
     case F_22cs:
     case F_35ms:
     case F_3rms:
