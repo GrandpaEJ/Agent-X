@@ -1,0 +1,19 @@
+{
+  "type": "function",
+  "function": {
+    "name": "traceroute_host",
+    "description": "Trace path hops to a target host",
+    "parameters": {
+      "type": "object",
+      "properties": {
+        "host": {
+          "type": "string",
+          "desc": "Domain or IP address"
+        }
+      },
+      "required": [
+        "host"
+      ]
+    }
+  }
+}

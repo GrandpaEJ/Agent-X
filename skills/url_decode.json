@@ -1,0 +1,19 @@
+{
+  "type": "function",
+  "function": {
+    "name": "url_decode",
+    "description": "URL decode a string",
+    "parameters": {
+      "type": "object",
+      "properties": {
+        "text": {
+          "type": "string",
+          "desc": "URL encoded string"
+        }
+      },
+      "required": [
+        "text"
+      ]
+    }
+  }
+}

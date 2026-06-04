@@ -1,0 +1,19 @@
+{
+  "type": "function",
+  "function": {
+    "name": "url_encode",
+    "description": "URL encode a text string",
+    "parameters": {
+      "type": "object",
+      "properties": {
+        "text": {
+          "type": "string",
+          "desc": "Plain string"
+        }
+      },
+      "required": [
+        "text"
+      ]
+    }
+  }
+}

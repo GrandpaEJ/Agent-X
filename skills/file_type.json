@@ -1,0 +1,19 @@
+{
+  "type": "function",
+  "function": {
+    "name": "file_type",
+    "description": "Determine file type using 'file' utility",
+    "parameters": {
+      "type": "object",
+      "properties": {
+        "path": {
+          "type": "string",
+          "desc": "Path to the target file"
+        }
+      },
+      "required": [
+        "path"
+      ]
+    }
+  }
+}

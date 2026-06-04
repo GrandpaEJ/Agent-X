@@ -1,0 +1,12 @@
+{
+  "type": "function",
+  "function": {
+    "name": "git_pull",
+    "description": "Fetch and merge commits from remote origin",
+    "parameters": {
+      "type": "object",
+      "properties": {},
+      "required": []
+    }
+  }
+}

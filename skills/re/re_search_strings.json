@@ -1,0 +1,27 @@
+{
+  "type": "function",
+  "function": {
+    "name": "re_search_strings",
+    "description": "Extract and filter printable strings from binary files (DEX, ELF, SO, exe)",
+    "parameters": {
+      "type": "object",
+      "properties": {
+        "file_path": {
+          "type": "string",
+          "description": "Path to the binary file"
+        },
+        "pattern": {
+          "type": "string",
+          "description": "Optional regex pattern to filter strings (e.g. 'http', 'api', 'key')"
+        },
+        "min_len": {
+          "type": "string",
+          "description": "Optional minimum string length (default is 4)"
+        }
+      },
+      "required": [
+        "file_path"
+      ]
+    }
+  }
+}

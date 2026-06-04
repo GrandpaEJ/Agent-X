@@ -1,0 +1,40 @@
+# Build artifacts
+*.o
+obj/
+agent-x
+agent-x-*
+agent-x-BlFaKF
+.zig-cache/
+
+# Local agent data & config
+.env
+.agent_memory.json
+.agent_session.json
+.telegram_sessions/
+agent-x.log
+agent-x.pid
+
+# Keys and APKs/Jars
+test.jks
+*.jks
+apk/
+*.apk
+*.jar
+
+# Plans and state tracking
+*plan*.md
+state.md
+resume.html
+resume.pdf
+resume_pdf.html
+
+# IDEs and Editors
+.vscode/
+.idea/
+*.swp
+
+# OS generated files
+.DS_Store
+.antigravitycli/
+
+

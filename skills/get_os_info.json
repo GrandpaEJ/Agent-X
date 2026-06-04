@@ -1,0 +1,12 @@
+{
+  "type": "function",
+  "function": {
+    "name": "get_os_info",
+    "description": "Get detailed system OS/release information",
+    "parameters": {
+      "type": "object",
+      "properties": {},
+      "required": []
+    }
+  }
+}

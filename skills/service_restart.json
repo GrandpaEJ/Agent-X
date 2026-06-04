@@ -1,0 +1,19 @@
+{
+  "type": "function",
+  "function": {
+    "name": "service_restart",
+    "description": "Restart a systemd service unit",
+    "parameters": {
+      "type": "object",
+      "properties": {
+        "service": {
+          "type": "string",
+          "desc": "Service unit name"
+        }
+      },
+      "required": [
+        "service"
+      ]
+    }
+  }
+}

@@ -1,0 +1,19 @@
+{
+  "type": "function",
+  "function": {
+    "name": "count_words",
+    "description": "Count words and character lengths of a file",
+    "parameters": {
+      "type": "object",
+      "properties": {
+        "path": {
+          "type": "string",
+          "desc": "File path"
+        }
+      },
+      "required": [
+        "path"
+      ]
+    }
+  }
+}

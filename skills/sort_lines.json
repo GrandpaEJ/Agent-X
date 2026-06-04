@@ -1,0 +1,19 @@
+{
+  "type": "function",
+  "function": {
+    "name": "sort_lines",
+    "description": "Sort text lines inside a file",
+    "parameters": {
+      "type": "object",
+      "properties": {
+        "path": {
+          "type": "string",
+          "desc": "File path"
+        }
+      },
+      "required": [
+        "path"
+      ]
+    }
+  }
+}

@@ -1,0 +1,19 @@
+{
+  "type": "function",
+  "function": {
+    "name": "count_lines",
+    "description": "Count total lines inside a text file",
+    "parameters": {
+      "type": "object",
+      "properties": {
+        "path": {
+          "type": "string",
+          "desc": "Path to target file"
+        }
+      },
+      "required": [
+        "path"
+      ]
+    }
+  }
+}

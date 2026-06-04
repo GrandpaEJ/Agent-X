@@ -1,0 +1,12 @@
+{
+  "type": "function",
+  "function": {
+    "name": "get_uptime",
+    "description": "Get system uptime and load average",
+    "parameters": {
+      "type": "object",
+      "properties": {},
+      "required": []
+    }
+  }
+}

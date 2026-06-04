@@ -1,0 +1,19 @@
+{
+  "type": "function",
+  "function": {
+    "name": "git_log",
+    "description": "Display simplified git commit graph logs",
+    "parameters": {
+      "type": "object",
+      "properties": {
+        "count": {
+          "type": "string",
+          "desc": "Number of commits to view"
+        }
+      },
+      "required": [
+        "count"
+      ]
+    }
+  }
+}

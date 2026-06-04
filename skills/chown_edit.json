@@ -1,0 +1,24 @@
+{
+  "type": "function",
+  "function": {
+    "name": "chown_edit",
+    "description": "Modify file/folder owner/group",
+    "parameters": {
+      "type": "object",
+      "properties": {
+        "path": {
+          "type": "string",
+          "desc": "Path to target file"
+        },
+        "owner": {
+          "type": "string",
+          "desc": "Owner specifier (e.g. 'user:group')"
+        }
+      },
+      "required": [
+        "path",
+        "owner"
+      ]
+    }
+  }
+}

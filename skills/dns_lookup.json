@@ -1,0 +1,19 @@
+{
+  "type": "function",
+  "function": {
+    "name": "dns_lookup",
+    "description": "Perform DNS lookup queries",
+    "parameters": {
+      "type": "object",
+      "properties": {
+        "domain": {
+          "type": "string",
+          "desc": "Domain name to query"
+        }
+      },
+      "required": [
+        "domain"
+      ]
+    }
+  }
+}

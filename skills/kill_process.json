@@ -1,0 +1,19 @@
+{
+  "type": "function",
+  "function": {
+    "name": "kill_process",
+    "description": "Force kill a process by PID or matching name",
+    "parameters": {
+      "type": "object",
+      "properties": {
+        "pid_or_name": {
+          "type": "string",
+          "desc": "Process ID or name matcher"
+        }
+      },
+      "required": [
+        "pid_or_name"
+      ]
+    }
+  }
+}

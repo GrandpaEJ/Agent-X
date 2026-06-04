@@ -1,0 +1,19 @@
+{
+  "type": "function",
+  "function": {
+    "name": "date_to_epoch",
+    "description": "Convert human date string to Epoch timestamp",
+    "parameters": {
+      "type": "object",
+      "properties": {
+        "date_str": {
+          "type": "string",
+          "desc": "Human date (e.g. '2026-06-01 12:00:00')"
+        }
+      },
+      "required": [
+        "date_str"
+      ]
+    }
+  }
+}

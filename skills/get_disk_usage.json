@@ -1,0 +1,12 @@
+{
+  "type": "function",
+  "function": {
+    "name": "get_disk_usage",
+    "description": "Get storage disk filesystem space usage",
+    "parameters": {
+      "type": "object",
+      "properties": {},
+      "required": []
+    }
+  }
+}

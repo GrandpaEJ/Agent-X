@@ -1,0 +1,24 @@
+{
+  "type": "function",
+  "function": {
+    "name": "re_zipalign",
+    "description": "Align uncompressed resources in an APK file to 4-byte boundaries",
+    "parameters": {
+      "type": "object",
+      "properties": {
+        "apk_path": {
+          "type": "string",
+          "description": "Path to the input APK file"
+        },
+        "out_apk": {
+          "type": "string",
+          "description": "Path to the output aligned APK file"
+        }
+      },
+      "required": [
+        "apk_path",
+        "out_apk"
+      ]
+    }
+  }
+}

@@ -1,0 +1,12 @@
+{
+  "type": "function",
+  "function": {
+    "name": "git_diff_summary",
+    "description": "Display summary diff of modifications",
+    "parameters": {
+      "type": "object",
+      "properties": {},
+      "required": []
+    }
+  }
+}

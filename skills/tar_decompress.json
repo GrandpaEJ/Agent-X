@@ -1,0 +1,24 @@
+{
+  "type": "function",
+  "function": {
+    "name": "tar_decompress",
+    "description": "Extract a tar.gz compressed archive",
+    "parameters": {
+      "type": "object",
+      "properties": {
+        "archive": {
+          "type": "string",
+          "desc": "Path to tar.gz archive"
+        },
+        "dest": {
+          "type": "string",
+          "desc": "Destination directory path"
+        }
+      },
+      "required": [
+        "archive",
+        "dest"
+      ]
+    }
+  }
+}

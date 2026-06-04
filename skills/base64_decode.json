@@ -1,0 +1,19 @@
+{
+  "type": "function",
+  "function": {
+    "name": "base64_decode",
+    "description": "Decode a Base64 string",
+    "parameters": {
+      "type": "object",
+      "properties": {
+        "text": {
+          "type": "string",
+          "desc": "Base64 encoded string"
+        }
+      },
+      "required": [
+        "text"
+      ]
+    }
+  }
+}

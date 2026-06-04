@@ -1,0 +1,24 @@
+{
+  "type": "function",
+  "function": {
+    "name": "find_files",
+    "description": "Find files matching a glob pattern",
+    "parameters": {
+      "type": "object",
+      "properties": {
+        "dir": {
+          "type": "string",
+          "desc": "Directory path to scan"
+        },
+        "pattern": {
+          "type": "string",
+          "desc": "Pattern name (e.g. '*.txt')"
+        }
+      },
+      "required": [
+        "dir",
+        "pattern"
+      ]
+    }
+  }
+}

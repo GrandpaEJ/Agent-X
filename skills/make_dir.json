@@ -1,0 +1,19 @@
+{
+  "type": "function",
+  "function": {
+    "name": "make_dir",
+    "description": "Create a new folder path recursively",
+    "parameters": {
+      "type": "object",
+      "properties": {
+        "path": {
+          "type": "string",
+          "desc": "Folder path to create"
+        }
+      },
+      "required": [
+        "path"
+      ]
+    }
+  }
+}

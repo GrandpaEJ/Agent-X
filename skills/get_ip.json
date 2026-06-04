@@ -1,0 +1,12 @@
+{
+  "type": "function",
+  "function": {
+    "name": "get_ip",
+    "description": "Get public IP address of the system",
+    "parameters": {
+      "type": "object",
+      "properties": {},
+      "required": []
+    }
+  }
+}

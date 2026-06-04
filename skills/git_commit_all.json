@@ -1,0 +1,19 @@
+{
+  "type": "function",
+  "function": {
+    "name": "git_commit_all",
+    "description": "Stage modifications and commit them",
+    "parameters": {
+      "type": "object",
+      "properties": {
+        "message": {
+          "type": "string",
+          "desc": "Commit comment string"
+        }
+      },
+      "required": [
+        "message"
+      ]
+    }
+  }
+}

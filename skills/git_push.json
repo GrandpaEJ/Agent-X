@@ -1,0 +1,12 @@
+{
+  "type": "function",
+  "function": {
+    "name": "git_push",
+    "description": "Push staged commits to remote origin",
+    "parameters": {
+      "type": "object",
+      "properties": {},
+      "required": []
+    }
+  }
+}

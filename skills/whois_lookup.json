@@ -1,0 +1,19 @@
+{
+  "type": "function",
+  "function": {
+    "name": "whois_lookup",
+    "description": "Lookup domain register WHOIS details",
+    "parameters": {
+      "type": "object",
+      "properties": {
+        "domain": {
+          "type": "string",
+          "desc": "Domain name"
+        }
+      },
+      "required": [
+        "domain"
+      ]
+    }
+  }
+}

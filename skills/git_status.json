@@ -1,0 +1,12 @@
+{
+  "type": "function",
+  "function": {
+    "name": "git_status",
+    "description": "Display local git working directory status",
+    "parameters": {
+      "type": "object",
+      "properties": {},
+      "required": []
+    }
+  }
+}

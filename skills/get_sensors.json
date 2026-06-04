@@ -1,0 +1,12 @@
+{
+  "type": "function",
+  "function": {
+    "name": "get_sensors",
+    "description": "Get temperature and system sensor outputs",
+    "parameters": {
+      "type": "object",
+      "properties": {},
+      "required": []
+    }
+  }
+}

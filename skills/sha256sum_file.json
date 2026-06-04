@@ -1,0 +1,19 @@
+{
+  "type": "function",
+  "function": {
+    "name": "sha256sum_file",
+    "description": "Compute SHA-256 checksum hash of a file",
+    "parameters": {
+      "type": "object",
+      "properties": {
+        "path": {
+          "type": "string",
+          "desc": "Path to file"
+        }
+      },
+      "required": [
+        "path"
+      ]
+    }
+  }
+}

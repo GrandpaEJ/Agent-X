@@ -1,0 +1,19 @@
+{
+  "type": "function",
+  "function": {
+    "name": "math_calc",
+    "description": "Evaluate simple mathematics calculations",
+    "parameters": {
+      "type": "object",
+      "properties": {
+        "expression": {
+          "type": "string",
+          "desc": "Math formula (e.g. '25 * 4.2 / (10 - 2)')"
+        }
+      },
+      "required": [
+        "expression"
+      ]
+    }
+  }
+}

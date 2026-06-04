@@ -1,0 +1,19 @@
+{
+  "type": "function",
+  "function": {
+    "name": "ping_host",
+    "description": "Ping a remote host to check latency/reachability",
+    "parameters": {
+      "type": "object",
+      "properties": {
+        "host": {
+          "type": "string",
+          "desc": "IP or Domain name"
+        }
+      },
+      "required": [
+        "host"
+      ]
+    }
+  }
+}

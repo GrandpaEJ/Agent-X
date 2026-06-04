@@ -1,0 +1,19 @@
+{
+  "type": "function",
+  "function": {
+    "name": "md5sum_file",
+    "description": "Compute MD5 checksum hash of a file",
+    "parameters": {
+      "type": "object",
+      "properties": {
+        "path": {
+          "type": "string",
+          "desc": "Path to file"
+        }
+      },
+      "required": [
+        "path"
+      ]
+    }
+  }
+}

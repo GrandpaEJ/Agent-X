@@ -1,0 +1,19 @@
+{
+  "type": "function",
+  "function": {
+    "name": "http_server",
+    "description": "Spawn a quick temporary Python HTTP static server",
+    "parameters": {
+      "type": "object",
+      "properties": {
+        "port": {
+          "type": "string",
+          "desc": "Server port (e.g. 8000)"
+        }
+      },
+      "required": [
+        "port"
+      ]
+    }
+  }
+}

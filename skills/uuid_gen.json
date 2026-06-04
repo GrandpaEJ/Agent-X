@@ -1,0 +1,12 @@
+{
+  "type": "function",
+  "function": {
+    "name": "uuid_gen",
+    "description": "Generate a unique UUIDv4 token",
+    "parameters": {
+      "type": "object",
+      "properties": {},
+      "required": []
+    }
+  }
+}

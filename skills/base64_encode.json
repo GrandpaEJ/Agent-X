@@ -1,0 +1,19 @@
+{
+  "type": "function",
+  "function": {
+    "name": "base64_encode",
+    "description": "Encode a string to Base64 format",
+    "parameters": {
+      "type": "object",
+      "properties": {
+        "text": {
+          "type": "string",
+          "desc": "Text content"
+        }
+      },
+      "required": [
+        "text"
+      ]
+    }
+  }
+}

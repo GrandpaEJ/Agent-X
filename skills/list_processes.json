@@ -1,0 +1,12 @@
+{
+  "type": "function",
+  "function": {
+    "name": "list_processes",
+    "description": "List top running processes sorted by CPU/Memory",
+    "parameters": {
+      "type": "object",
+      "properties": {},
+      "required": []
+    }
+  }
+}

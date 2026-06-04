@@ -1,0 +1,29 @@
+{
+  "type": "function",
+  "function": {
+    "name": "replace_text",
+    "description": "Replace matching text occurrences inside a file using sed",
+    "parameters": {
+      "type": "object",
+      "properties": {
+        "path": {
+          "type": "string",
+          "desc": "File path"
+        },
+        "find": {
+          "type": "string",
+          "desc": "Text pattern to replace"
+        },
+        "replace": {
+          "type": "string",
+          "desc": "Replacement text value"
+        }
+      },
+      "required": [
+        "path",
+        "find",
+        "replace"
+      ]
+    }
+  }
+}

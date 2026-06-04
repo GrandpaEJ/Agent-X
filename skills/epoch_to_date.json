@@ -1,0 +1,19 @@
+{
+  "type": "function",
+  "function": {
+    "name": "epoch_to_date",
+    "description": "Convert Epoch timestamp to human readable date",
+    "parameters": {
+      "type": "object",
+      "properties": {
+        "epoch": {
+          "type": "string",
+          "desc": "Epoch numeric string (e.g. 1717200000)"
+        }
+      },
+      "required": [
+        "epoch"
+      ]
+    }
+  }
+}

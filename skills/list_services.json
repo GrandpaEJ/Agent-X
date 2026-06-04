@@ -1,0 +1,12 @@
+{
+  "type": "function",
+  "function": {
+    "name": "list_services",
+    "description": "List active systemd service units",
+    "parameters": {
+      "type": "object",
+      "properties": {},
+      "required": []
+    }
+  }
+}

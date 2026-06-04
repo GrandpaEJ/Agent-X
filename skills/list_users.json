@@ -1,0 +1,12 @@
+{
+  "type": "function",
+  "function": {
+    "name": "list_users",
+    "description": "List local human system users registered on the OS",
+    "parameters": {
+      "type": "object",
+      "properties": {},
+      "required": []
+    }
+  }
+}

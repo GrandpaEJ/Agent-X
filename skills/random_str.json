@@ -1,0 +1,19 @@
+{
+  "type": "function",
+  "function": {
+    "name": "random_str",
+    "description": "Generate a cryptographically secure random password/string",
+    "parameters": {
+      "type": "object",
+      "properties": {
+        "length": {
+          "type": "string",
+          "desc": "String length (e.g. 16)"
+        }
+      },
+      "required": [
+        "length"
+      ]
+    }
+  }
+}

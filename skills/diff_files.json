@@ -1,0 +1,24 @@
+{
+  "type": "function",
+  "function": {
+    "name": "diff_files",
+    "description": "Display differences between two files",
+    "parameters": {
+      "type": "object",
+      "properties": {
+        "file1": {
+          "type": "string",
+          "desc": "First file path"
+        },
+        "file2": {
+          "type": "string",
+          "desc": "Second file path"
+        }
+      },
+      "required": [
+        "file1",
+        "file2"
+      ]
+    }
+  }
+}

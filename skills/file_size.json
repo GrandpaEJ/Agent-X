@@ -1,0 +1,19 @@
+{
+  "type": "function",
+  "function": {
+    "name": "file_size",
+    "description": "Get file size in human readable format",
+    "parameters": {
+      "type": "object",
+      "properties": {
+        "path": {
+          "type": "string",
+          "desc": "Path to the target file"
+        }
+      },
+      "required": [
+        "path"
+      ]
+    }
+  }
+}

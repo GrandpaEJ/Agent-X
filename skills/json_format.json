@@ -1,0 +1,19 @@
+{
+  "type": "function",
+  "function": {
+    "name": "json_format",
+    "description": "Format and validate a JSON file",
+    "parameters": {
+      "type": "object",
+      "properties": {
+        "path": {
+          "type": "string",
+          "desc": "Path to JSON file"
+        }
+      },
+      "required": [
+        "path"
+      ]
+    }
+  }
+}

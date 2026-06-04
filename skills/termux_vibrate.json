@@ -1,0 +1,19 @@
+{
+  "type": "function",
+  "function": {
+    "name": "termux_vibrate",
+    "description": "Trigger device vibration (Android)",
+    "parameters": {
+      "type": "object",
+      "properties": {
+        "duration_ms": {
+          "type": "string",
+          "desc": "Vibration time in ms"
+        }
+      },
+      "required": [
+        "duration_ms"
+      ]
+    }
+  }
+}

@@ -1,0 +1,12 @@
+{
+  "type": "function",
+  "function": {
+    "name": "get_ram_info",
+    "description": "Get current memory (RAM) usage details",
+    "parameters": {
+      "type": "object",
+      "properties": {},
+      "required": []
+    }
+  }
+}

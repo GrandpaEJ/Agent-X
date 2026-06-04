@@ -1,0 +1,19 @@
+{
+  "type": "function",
+  "function": {
+    "name": "xml_format",
+    "description": "Format and pretty print an XML file",
+    "parameters": {
+      "type": "object",
+      "properties": {
+        "path": {
+          "type": "string",
+          "desc": "Path to XML file"
+        }
+      },
+      "required": [
+        "path"
+      ]
+    }
+  }
+}

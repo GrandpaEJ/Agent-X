@@ -1,0 +1,19 @@
+{
+  "type": "function",
+  "function": {
+    "name": "check_port",
+    "description": "Determine which process is bound to a TCP port",
+    "parameters": {
+      "type": "object",
+      "properties": {
+        "port": {
+          "type": "string",
+          "desc": "TCP Port number"
+        }
+      },
+      "required": [
+        "port"
+      ]
+    }
+  }
+}

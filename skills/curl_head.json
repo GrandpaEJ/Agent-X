@@ -1,0 +1,19 @@
+{
+  "type": "function",
+  "function": {
+    "name": "curl_head",
+    "description": "Fetch HTTP response header details",
+    "parameters": {
+      "type": "object",
+      "properties": {
+        "url": {
+          "type": "string",
+          "desc": "HTTP endpoint URL"
+        }
+      },
+      "required": [
+        "url"
+      ]
+    }
+  }
+}

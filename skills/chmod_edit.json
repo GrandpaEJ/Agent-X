@@ -1,0 +1,24 @@
+{
+  "type": "function",
+  "function": {
+    "name": "chmod_edit",
+    "description": "Modify file/folder access permissions",
+    "parameters": {
+      "type": "object",
+      "properties": {
+        "path": {
+          "type": "string",
+          "desc": "Path to file"
+        },
+        "mode": {
+          "type": "string",
+          "desc": "Numeric mode (e.g. '755', '600')"
+        }
+      },
+      "required": [
+        "path",
+        "mode"
+      ]
+    }
+  }
+}

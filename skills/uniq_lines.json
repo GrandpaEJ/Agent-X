@@ -1,0 +1,19 @@
+{
+  "type": "function",
+  "function": {
+    "name": "uniq_lines",
+    "description": "Get unique values from sorted lines of a file",
+    "parameters": {
+      "type": "object",
+      "properties": {
+        "path": {
+          "type": "string",
+          "desc": "File path"
+        }
+      },
+      "required": [
+        "path"
+      ]
+    }
+  }
+}

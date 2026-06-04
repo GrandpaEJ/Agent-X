@@ -1,0 +1,24 @@
+{
+  "type": "function",
+  "function": {
+    "name": "find_regex",
+    "description": "Search text patterns using grep regex",
+    "parameters": {
+      "type": "object",
+      "properties": {
+        "path": {
+          "type": "string",
+          "desc": "File or folder path"
+        },
+        "pattern": {
+          "type": "string",
+          "desc": "Regex search pattern"
+        }
+      },
+      "required": [
+        "path",
+        "pattern"
+      ]
+    }
+  }
+}

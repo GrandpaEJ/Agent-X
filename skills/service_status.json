@@ -1,0 +1,19 @@
+{
+  "type": "function",
+  "function": {
+    "name": "service_status",
+    "description": "Get current state status of a systemd unit",
+    "parameters": {
+      "type": "object",
+      "properties": {
+        "service": {
+          "type": "string",
+          "desc": "Service unit name"
+        }
+      },
+      "required": [
+        "service"
+      ]
+    }
+  }
+}

@@ -1,0 +1,24 @@
+{
+  "type": "function",
+  "function": {
+    "name": "tar_compress",
+    "description": "Create a compressed tar archive (.tar.gz)",
+    "parameters": {
+      "type": "object",
+      "properties": {
+        "source": {
+          "type": "string",
+          "desc": "Source path to compress"
+        },
+        "archive": {
+          "type": "string",
+          "desc": "Target archive file path"
+        }
+      },
+      "required": [
+        "source",
+        "archive"
+      ]
+    }
+  }
+}

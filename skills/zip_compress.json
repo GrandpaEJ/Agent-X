@@ -1,0 +1,24 @@
+{
+  "type": "function",
+  "function": {
+    "name": "zip_compress",
+    "description": "Create a zip archive",
+    "parameters": {
+      "type": "object",
+      "properties": {
+        "source": {
+          "type": "string",
+          "desc": "Source path to compress"
+        },
+        "archive": {
+          "type": "string",
+          "desc": "Target zip file path"
+        }
+      },
+      "required": [
+        "source",
+        "archive"
+      ]
+    }
+  }
+}

@@ -1,0 +1,19 @@
+{
+  "type": "function",
+  "function": {
+    "name": "weather",
+    "description": "Fetch current weather details for a city via wttr.in",
+    "parameters": {
+      "type": "object",
+      "properties": {
+        "city": {
+          "type": "string",
+          "desc": "Name of the target city"
+        }
+      },
+      "required": [
+        "city"
+      ]
+    }
+  }
+}

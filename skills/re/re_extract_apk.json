@@ -1,0 +1,24 @@
+{
+  "type": "function",
+  "function": {
+    "name": "re_extract_apk",
+    "description": "Extract the contents of an APK file to a target directory",
+    "parameters": {
+      "type": "object",
+      "properties": {
+        "apk_path": {
+          "type": "string",
+          "description": "Path to the input APK file"
+        },
+        "out_dir": {
+          "type": "string",
+          "description": "Target directory to extract files into"
+        }
+      },
+      "required": [
+        "apk_path",
+        "out_dir"
+      ]
+    }
+  }
+}

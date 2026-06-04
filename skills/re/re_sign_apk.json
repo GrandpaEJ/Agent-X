@@ -1,0 +1,24 @@
+{
+  "type": "function",
+  "function": {
+    "name": "re_sign_apk",
+    "description": "Sign an APK using apksigner or jarsigner if available",
+    "parameters": {
+      "type": "object",
+      "properties": {
+        "apk_path": {
+          "type": "string",
+          "description": "Path to the input APK file to sign"
+        },
+        "out_apk": {
+          "type": "string",
+          "description": "Path to output the signed APK file"
+        }
+      },
+      "required": [
+        "apk_path",
+        "out_apk"
+      ]
+    }
+  }
+}

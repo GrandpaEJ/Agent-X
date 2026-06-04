@@ -1,0 +1,12 @@
+{
+  "type": "function",
+  "function": {
+    "name": "termux_location_gps",
+    "description": "Query device GPS coordinates (Android)",
+    "parameters": {
+      "type": "object",
+      "properties": {},
+      "required": []
+    }
+  }
+}

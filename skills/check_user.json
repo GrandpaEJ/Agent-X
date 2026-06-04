@@ -1,0 +1,19 @@
+{
+  "type": "function",
+  "function": {
+    "name": "check_user",
+    "description": "Check if a username exists in the system passwd database",
+    "parameters": {
+      "type": "object",
+      "properties": {
+        "username": {
+          "type": "string",
+          "desc": "User name lookup"
+        }
+      },
+      "required": [
+        "username"
+      ]
+    }
+  }
+}

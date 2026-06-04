@@ -1,0 +1,12 @@
+{
+  "type": "function",
+  "function": {
+    "name": "get_local_ip",
+    "description": "Get local network interface IP addresses",
+    "parameters": {
+      "type": "object",
+      "properties": {},
+      "required": []
+    }
+  }
+}

@@ -1,0 +1,24 @@
+{
+  "type": "function",
+  "function": {
+    "name": "zip_decompress",
+    "description": "Extract a zip file",
+    "parameters": {
+      "type": "object",
+      "properties": {
+        "archive": {
+          "type": "string",
+          "desc": "Path to zip archive"
+        },
+        "dest": {
+          "type": "string",
+          "desc": "Destination directory path"
+        }
+      },
+      "required": [
+        "archive",
+        "dest"
+      ]
+    }
+  }
+}

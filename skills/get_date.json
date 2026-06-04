@@ -1,0 +1,12 @@
+{
+  "type": "function",
+  "function": {
+    "name": "get_date",
+    "description": "Get current system time date formatted",
+    "parameters": {
+      "type": "object",
+      "properties": {},
+      "required": []
+    }
+  }
+}

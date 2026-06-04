@@ -1,0 +1,12 @@
+{
+  "type": "function",
+  "function": {
+    "name": "get_battery",
+    "description": "Get system battery status (where available)",
+    "parameters": {
+      "type": "object",
+      "properties": {},
+      "required": []
+    }
+  }
+}

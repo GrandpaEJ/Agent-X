@@ -1,0 +1,12 @@
+{
+  "type": "function",
+  "function": {
+    "name": "termux_battery_status",
+    "description": "Get Android device battery metrics details",
+    "parameters": {
+      "type": "object",
+      "properties": {},
+      "required": []
+    }
+  }
+}

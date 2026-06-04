@@ -1,0 +1,12 @@
+{
+  "type": "function",
+  "function": {
+    "name": "git_branches",
+    "description": "List git repository branches",
+    "parameters": {
+      "type": "object",
+      "properties": {},
+      "required": []
+    }
+  }
+}

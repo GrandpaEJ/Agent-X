@@ -1,0 +1,212 @@
+#include "smali_parser.h"
+#include <string.h>
+#include <stdlib.h>
+
+static uint32_t get_insn_size_words(smali_insn_t *ins) {
+    switch (ins->fmt) {
+        case 0: return 1; // F_10x
+        case 1: case 21: return 1; // F_12x
+        case 2: return 1; // F_11n
+        case 3: return 1; // F_11x
+        case 4: return 1; // F_10t
+        case 5: return 2; // F_20t
+        case 6: return 3; // F_30t
+        case 7: case 19: return 2; // F_21c
+        case 8: return 2; // F_22c
+        case 9: case 10: return 2; // F_21t / F_22t
+        case 11: return 2; // F_21s
+        case 12: return 2; // F_22b
+        case 22: return 2; // F_22s
+        case 13: return 2; // F_23x
+        case 14: return 3; // F_35c
+        case 15: return 3; // F_3rc
+        case 16: return 3; // F_31i
+        case 18: return 3; // F_31t
+        case 23: return 2; // F_22x
+        case 24: return 3; // F_32x
+        case 25: return 3; // F_31c
+        case 101: return 4 + ins->payload_targets_count * 2; // packed-switch-payload
+        case 102: return 2 + ins->payload_targets_count * 4; // sparse-switch-payload
+        default: return 1;
+    }
+}
+
+static uint32_t resolve_register(uint32_t reg, uint32_t registers_count, uint32_t ins_count) {
+    if (reg & 0x80000000) {
+        uint32_t p_idx = reg & ~0x80000000;
+        return registers_count - ins_count + p_idx;
+    }
+    return reg;
+}
+
+uint32_t smali_encode_method_insns(smali_ctx_def_t *ctx, smali_method_def_t *m, uint16_t *out_buf) {
+    uint32_t *insn_offsets = malloc((m->insns_count + 1) * sizeof(uint32_t));
+    uint32_t cur_offset = 0;
+    for (uint32_t i = 0; i < m->insns_count; i++) {
+        insn_offsets[i] = cur_offset;
+        cur_offset += get_insn_size_words(&m->insns[i]);
+    }
+    insn_offsets[m->insns_count] = cur_offset;
+
+    uint32_t write_idx = 0;
+    for (uint32_t i = 0; i < m->insns_count; i++) {
+        smali_insn_t *ins = &m->insns[i];
+        if (ins->fmt == 101 || ins->fmt == 102) {
+            const char *payload_label = NULL;
+            for (uint32_t j = 0; j < m->labels_count; j++) {
+                if (m->labels[j].offset == i) {
+                    payload_label = m->labels[j].name;
+                    break;
+                }
+            }
+            uint32_t switch_ins_off = 0;
+            if (payload_label) {
+                for (uint32_t j = 0; j < m->insns_count; j++) {
+                    if (m->insns[j].label_target && strcmp(m->insns[j].label_target, payload_label) == 0) {
+                        switch_ins_off = insn_offsets[j];
+                        break;
+                    }
+                }
+            }
+
+            if (ins->fmt == 101) {
+                out_buf[write_idx++] = 0x0100;
+                out_buf[write_idx++] = ins->payload_targets_count;
+                out_buf[write_idx++] = ins->lit & 0xFFFF;
+                out_buf[write_idx++] = (ins->lit >> 16) & 0xFFFF;
+                for (uint32_t t = 0; t < ins->payload_targets_count; t++) {
+                    uint32_t target_idx = 0;
+                    for (uint32_t j = 0; j < m->labels_count; j++) {
+                        if (strcmp(m->labels[j].name, ins->payload_targets[t]) == 0) {
+                            target_idx = m->labels[j].offset;
+                            break;
+                        }
+                    }
+                    int32_t target_rel_off = (int32_t)insn_offsets[target_idx] - (int32_t)switch_ins_off;
+                    out_buf[write_idx++] = target_rel_off & 0xFFFF;
+                    out_buf[write_idx++] = (target_rel_off >> 16) & 0xFFFF;
+                }
+            } else {
+                out_buf[write_idx++] = 0x0200;
+                out_buf[write_idx++] = ins->payload_targets_count;
+                for (uint32_t t = 0; t < ins->payload_targets_count; t++) {
+                    int32_t key = ins->payload_keys[t];
+                    out_buf[write_idx++] = key & 0xFFFF;
+                    out_buf[write_idx++] = (key >> 16) & 0xFFFF;
+                }
+                for (uint32_t t = 0; t < ins->payload_targets_count; t++) {
+                    uint32_t target_idx = 0;
+                    for (uint32_t j = 0; j < m->labels_count; j++) {
+                        if (strcmp(m->labels[j].name, ins->payload_targets[t]) == 0) {
+                            target_idx = m->labels[j].offset;
+                            break;
+                        }
+                    }
+                    int32_t target_rel_off = (int32_t)insn_offsets[target_idx] - (int32_t)switch_ins_off;
+                    out_buf[write_idx++] = target_rel_off & 0xFFFF;
+                    out_buf[write_idx++] = (target_rel_off >> 16) & 0xFFFF;
+                }
+            }
+            continue;
+        }
+        uint32_t ins_off = insn_offsets[i];
+        uint16_t w0 = ins->op, w1 = 0, w2 = 0;
+
+        int32_t rel_off = 0;
+        if (ins->label_target) {
+            uint32_t target_idx = 0xFFFFFFFF;
+            for (uint32_t j = 0; j < m->labels_count; j++) {
+                if (strcmp(m->labels[j].name, ins->label_target) == 0) {
+                    target_idx = m->labels[j].offset;
+                    break;
+                }
+            }
+            if (target_idx != 0xFFFFFFFF) {
+                rel_off = (int32_t)insn_offsets[target_idx] - (int32_t)ins_off;
+            }
+        }
+
+        // Resolving reference indexes based on kind
+        uint32_t ref_idx = 0;
+        if (ins->ref_str) {
+            if (ins->kind == 1) {
+                ref_idx = smali_pool_find(&ctx->strings, ins->ref_str);
+            } else if (ins->kind == 2) {
+                ref_idx = smali_pool_find(&ctx->types, ins->ref_str);
+            } else if (ins->kind == 3) {
+                ref_idx = smali_pool_find(&ctx->fields, ins->ref_str);
+            } else if (ins->kind == 4) {
+                ref_idx = smali_pool_find(&ctx->methods, ins->ref_str);
+            }
+            if (ref_idx == 0xFFFFFFFF) ref_idx = 0;
+        }
+
+        uint32_t vA = resolve_register(ins->vA, m->registers_count, m->ins_count);
+        uint32_t vB = resolve_register(ins->vB, m->registers_count, m->ins_count);
+        uint32_t vC = resolve_register(ins->vC, m->registers_count, m->ins_count);
+
+        switch (ins->fmt) {
+            case 0: // F_10x
+                w0 = ins->op; break;
+            case 1: case 21: // F_12x
+                w0 = ins->op | (vA << 8) | (vB << 12); break;
+            case 2: // F_11n
+                w0 = ins->op | (vA << 8) | ((ins->lit & 0xF) << 12); break;
+            case 3: // F_11x
+                w0 = ins->op | (vA << 8); break;
+            case 4: // F_10t
+                w0 = ins->op | (((uint8_t)rel_off) << 8); break;
+            case 5: // F_20t
+                w0 = ins->op; w1 = (uint16_t)rel_off; break;
+            case 6: // F_30t
+                w0 = ins->op; w1 = (uint16_t)rel_off; w2 = (uint16_t)(rel_off >> 16); break;
+            case 7: case 19: // F_21c
+                w0 = ins->op | (vA << 8); w1 = (uint16_t)ref_idx; break;
+            case 8: // F_22c
+                w0 = ins->op | (vA << 8) | (vB << 12); w1 = (uint16_t)ref_idx; break;
+            case 9: // F_21t
+                w0 = ins->op | (vA << 8); w1 = (uint16_t)rel_off; break;
+            case 10: // F_22t
+                w0 = ins->op | (vA << 8) | (vB << 12); w1 = (uint16_t)rel_off; break;
+            case 11: // F_21s
+                w0 = ins->op | (vA << 8);
+                w1 = (ins->op == 0x15) ? (uint16_t)(ins->lit >> 16) : (uint16_t)ins->lit;
+                break;
+            case 12: // F_22b
+                w0 = ins->op | (vA << 8); w1 = (vB) | ((ins->lit & 0xFF) << 8); break;
+            case 22: // F_22s
+                w0 = ins->op | (vA << 8) | (vB << 12); w1 = (uint16_t)ins->lit; break;
+            case 13: // F_23x
+                w0 = ins->op | (vA << 8); w1 = (vB) | (vC << 8); break;
+            case 14: { // F_35c
+                uint32_t r0 = resolve_register(ins->regs[0], m->registers_count, m->ins_count);
+                uint32_t r1 = resolve_register(ins->regs[1], m->registers_count, m->ins_count);
+                uint32_t r2 = resolve_register(ins->regs[2], m->registers_count, m->ins_count);
+                uint32_t r3 = resolve_register(ins->regs[3], m->registers_count, m->ins_count);
+                uint32_t r4 = resolve_register(ins->regs[4], m->registers_count, m->ins_count);
+                w0 = ins->op | (ins->vA << 12) | ((r4 & 0xF) << 8);
+                w1 = (uint16_t)ref_idx;
+                w2 = (r0 & 0xF) | ((r1 & 0xF) << 4) | ((r2 & 0xF) << 8) | ((r3 & 0xF) << 12);
+                break;
+            }
+            case 15: // F_3rc
+                w0 = ins->op | (ins->vA << 8); w1 = (uint16_t)ref_idx; w2 = (uint16_t)vC; break;
+            case 16: // F_31i
+                w0 = ins->op | (vA << 8); w1 = (uint16_t)ins->lit; w2 = (uint16_t)(ins->lit >> 16); break;
+            case 18: // F_31t
+                w0 = ins->op | (vA << 8); w1 = (uint16_t)rel_off; w2 = (uint16_t)(rel_off >> 16); break;
+            case 23: // F_22x
+                w0 = ins->op | (vA << 8); w1 = (uint16_t)vB; break;
+            case 24: // F_32x
+                w0 = ins->op; w1 = (uint16_t)vA; w2 = (uint16_t)vB; break;
+            case 25: // F_31c
+                w0 = ins->op | (vA << 8); w1 = (uint16_t)(ref_idx & 0xFFFF); w2 = (uint16_t)(ref_idx >> 16); break;
+        }
+        uint32_t words = get_insn_size_words(ins);
+        out_buf[write_idx++] = w0;
+        if (words > 1) out_buf[write_idx++] = w1;
+        if (words > 2) out_buf[write_idx++] = w2;
+    }
+    free(insn_offsets);
+    return write_idx;
+}

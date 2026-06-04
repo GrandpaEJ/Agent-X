@@ -1,0 +1,12 @@
+{
+  "type": "function",
+  "function": {
+    "name": "check_internet",
+    "description": "Verify external network internet connection",
+    "parameters": {
+      "type": "object",
+      "properties": {},
+      "required": []
+    }
+  }
+}

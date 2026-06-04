@@ -1,0 +1,19 @@
+{
+  "type": "function",
+  "function": {
+    "name": "re_analyze_elf",
+    "description": "Analyze an ELF binary file's header, sections, and exported/imported dynamic symbols",
+    "parameters": {
+      "type": "object",
+      "properties": {
+        "elf_path": {
+          "type": "string",
+          "description": "Path to the ELF (.so or executable) file"
+        }
+      },
+      "required": [
+        "elf_path"
+      ]
+    }
+  }
+}

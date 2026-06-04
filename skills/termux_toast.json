@@ -1,0 +1,19 @@
+{
+  "type": "function",
+  "function": {
+    "name": "termux_toast",
+    "description": "Display Android UI toast message popup",
+    "parameters": {
+      "type": "object",
+      "properties": {
+        "message": {
+          "type": "string",
+          "desc": "Notification toast string"
+        }
+      },
+      "required": [
+        "message"
+      ]
+    }
+  }
+}

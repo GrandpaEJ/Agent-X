@@ -1,0 +1,12 @@
+{
+  "type": "function",
+  "function": {
+    "name": "get_cpu_info",
+    "description": "Get system CPU hardware details",
+    "parameters": {
+      "type": "object",
+      "properties": {},
+      "required": []
+    }
+  }
+}
