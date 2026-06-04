@@ -6,7 +6,7 @@
 #define FMT(_op, _fmt, _kind, _name) {_op, _fmt, _kind, _name}
 
 typedef enum {
-    K_NONE, K_STRING, K_TYPE, K_FIELD, K_METHOD, K_PROTO
+    K_NONE, K_STRING, K_TYPE, K_FIELD, K_METHOD, K_PROTO, K_METHOD_HANDLE, K_METHOD_TYPE, K_CALL_SITE
 } ref_kind;
 
 typedef enum {
@@ -238,6 +238,13 @@ static const op_entry optab[] = {
     FMT(0xE0, F_22b, K_NONE, "shl-int/lit8"),
     FMT(0xE1, F_22b, K_NONE, "shr-int/lit8"),
     FMT(0xE2, F_22b, K_NONE, "ushr-int/lit8"),
+    /* DEX 037+ extended opcodes */
+    FMT(0xFA, F_35c, K_CALL_SITE, "invoke-polymorphic"),
+    FMT(0xFB, F_35c, K_CALL_SITE, "invoke-polymorphic/range"),
+    FMT(0xFC, F_35c, K_CALL_SITE, "invoke-custom"),
+    FMT(0xFD, F_3rc, K_CALL_SITE, "invoke-custom/range"),
+    FMT(0xFE, F_21c, K_METHOD_HANDLE, "const-method-handle"),
+    FMT(0xFF, F_21c, K_METHOD_TYPE, "const-method-type"),
 };
 
 static const op_entry *find_op(uint8_t op) {

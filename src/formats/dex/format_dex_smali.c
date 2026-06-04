@@ -2,6 +2,8 @@
 #include <stdlib.h>
 #include <string.h>
 
+extern int smali_uleb(const uint8_t *data, uint32_t *val, const uint8_t **next);
+
 char *dex_to_smali_class(dex_ctx *ctx, uint32_t ci) {
     if (ci >= ctx->class_count) return NULL;
     dex_class *c = &ctx->classes[ci];
@@ -50,7 +52,7 @@ char *dex_to_smali_class(dex_ctx *ctx, uint32_t ci) {
         }
     }
 
-    /* class-level annotations */
+        /* class-level annotations */
     smali_write_annotations(&sb, ctx, c, 0, 0);
 
     /* static fields */
@@ -61,6 +63,7 @@ char *dex_to_smali_class(dex_ctx *ctx, uint32_t ci) {
             if (fe->field_idx < ctx->field_count) {
                 dex_field *f = &ctx->fields[fe->field_idx];
                 char *ft = smali_tsm(ctx->sp.strings[ctx->type_ids[f->type_idx]]);
+                smali_write_annotations(&sb, ctx, c, 1, fe->field_idx);
                 smali_sf(&sb, ".field %s %s:%s\n",
                     smali_aflags(fe->access_flags),
                     ctx->sp.strings[f->name_idx],
@@ -79,6 +82,7 @@ char *dex_to_smali_class(dex_ctx *ctx, uint32_t ci) {
             if (fe->field_idx < ctx->field_count) {
                 dex_field *f = &ctx->fields[fe->field_idx];
                 char *ft = smali_tsm(ctx->sp.strings[ctx->type_ids[f->type_idx]]);
+                smali_write_annotations(&sb, ctx, c, 1, fe->field_idx);
                 smali_sf(&sb, ".field %s %s:%s\n",
                     smali_aflags(fe->access_flags),
                     ctx->sp.strings[f->name_idx],

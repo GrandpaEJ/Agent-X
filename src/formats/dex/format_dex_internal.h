@@ -97,6 +97,7 @@ const char *smali_res(dex_ctx *ctx, int k, uint32_t i);
 void smali_mproto(dex_ctx *ctx, uint32_t mi, char *b, size_t z);
 const char *smali_reg_name(uint32_t r, uint32_t regs, uint32_t ins_size);
 int smali_uleb(const uint8_t *data, uint32_t *val, const uint8_t **next);
+int smali_sleb(const uint8_t *data, int32_t *val, const uint8_t **next);
 
 // Smali annotation output
 void smali_write_annotations(smali_sb *s, dex_ctx *ctx, dex_class *c,

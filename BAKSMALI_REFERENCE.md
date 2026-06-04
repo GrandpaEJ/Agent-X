@@ -463,22 +463,20 @@ Adler32 checksum and SHA-1 signature are computed over the final DEX file.
 - [x] Adler32 + SHA-1 checksums
 - [x] `const-string-jumbo` 32-bit index support
 - [x] Baksmali DEX optimization compat (0x81→int-to-long)
-
-### Partial
-- [~] Method-level annotations (parsed but indent/context wip)
-- [~] Static field initializers (encoded_array_item not yet emitted in smali)
+- [x] Try/catch block disassembly — `.catch` / `.catchall` directives in DEX→smali
+- [x] Try/catch block assembly — complete try/catch encoding in smali→DEX
+- [x] Debug info disassembly — `.line` directives from DEX debug_info_item
+- [x] Debug info assembly — `.line`, `.param`, `.local`, `.prologue` encoding in smali→DEX
+- [x] Array data payloads — `.array-data` blocks for fill-array-data
+- [x] Switch payloads — `.packed-switch` / `.sparse-switch` disassembly and assembly
+- [x] Field annotations — per-field annotation blocks in DEX→smali
+- [x] Static field initializers — encoded_array_item value emission
+- [x] DEX 037+ opcodes — invoke-polymorphic, invoke-custom, const-method-handle, const-method-type (decoder + encoder)
 
 ### Not Yet Implemented
 - [ ] **Register renumbering** — critical for ART verification (see §13.1)
-- [ ] **Try/catch block disassembly** — `.catch` / `.catchall` directives
-- [ ] **Try/catch block assembly** — encode try/catch into code_item
-- [ ] **Debug info** — `.line`, `.local`, `.param`, `.prologue`
-- [ ] **Array data** — `.array-data` / `fill-array-data` payloads
-- [ ] **Switch payloads** — `.packed-switch` / `.sparse-switch`
-- [ ] **Parameter annotations** — `params_sz` in annotation directory
-- [ ] **Field annotations** — per-field annotation blocks
-- [ ] **Method handles / call sites** — DEX 037+ features
-- [ ] **invoke-polymorphic / invoke-custom** — DEX 037+ opcodes
+- [ ] **Parameter annotations** — per-parameter annotation blocks
+- [ ] **Method handles / call sites** — DEX 037+ data structures
 - [ ] **Sequential labels** — `--sequential-labels` option
 - [ ] **Implicit references** — omit class name for same-class refs
 - [ ] **Normalized virtual methods** — base-class resolution
@@ -492,6 +490,7 @@ Adler32 checksum and SHA-1 signature are computed over the final DEX file.
 - [ ] **list** — table listing commands
 - [ ] **DEX 038/039** — newer DEX format versions
 - [ ] **cdex format** — compact DEX (Android P+)
+- [ ] **invoke-polymorphic / invoke-custom** — DEX 037+ pool references
 
 ---
 

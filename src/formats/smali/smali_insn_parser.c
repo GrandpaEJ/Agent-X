@@ -140,6 +140,13 @@ static const smali_op_t smali_optab[] = {
     {0xE0, 12, 0, "shl-int/lit8"},
     {0xE1, 12, 0, "shr-int/lit8"},
     {0xE2, 12, 0, "ushr-int/lit8"},
+    /* DEX 037+ extended opcodes */
+    {0xFA, 14, 4, "invoke-polymorphic"},
+    {0xFB, 15, 4, "invoke-polymorphic/range"},
+    {0xFC, 14, 4, "invoke-custom"},
+    {0xFD, 15, 4, "invoke-custom/range"},
+    {0xFE, 7, 2, "const-method-handle"},
+    {0xFF, 7, 2, "const-method-type"},
     // 3-register operations
     {0x90, 13, 0, "add-int"},
     {0x91, 13, 0, "sub-int"},
@@ -242,6 +249,7 @@ static const smali_op_t *find_smali_op(const char *name) {
 int smali_parse_method_body(smali_ctx_def_t *ctx, smali_method_def_t *m, char **p) {
     (void)ctx;
     char *start = *p;
+    int current_line = -1;  /* track current .line for next instruction */
     while (*start) {
         while (*start == ' ' || *start == '\t' || *start == '\r' || *start == '\n') start++;
         if (!*start) break;
@@ -268,6 +276,116 @@ int smali_parse_method_body(smali_ctx_def_t *ctx, smali_method_def_t *m, char **
                 return 0;
             }
             if (next) free(next);
+        } else if (strcmp(tok, ".line") == 0) {
+            char *line_tok = smali_next_token(&start);
+            if (line_tok) {
+                current_line = atoi(line_tok);
+                free(line_tok);
+            }
+            free(tok);
+            continue;
+        } else if (strcmp(tok, ".param") == 0) {
+            char *reg_tok = smali_next_token(&start);
+            char *name_tok = smali_next_token(&start);
+            if (reg_tok && name_tok) {
+                m->param_names = realloc(m->param_names, (m->param_name_count + 1) * sizeof(char *));
+                m->param_names[m->param_name_count++] = strdup(name_tok);
+                free(name_tok);
+                free(reg_tok);
+            } else {
+                if (reg_tok) free(reg_tok);
+                if (name_tok) free(name_tok);
+            }
+            free(tok);
+            continue;
+        } else if (strcmp(tok, ".prologue") == 0) {
+            m->prologue_set = 1;
+            free(tok);
+            continue;
+        } else if (strcmp(tok, ".epilogue") == 0) {
+            m->epilogue_set = 1;
+            free(tok);
+            continue;
+        } else if (strcmp(tok, ".local") == 0) {
+            char *reg_tok = smali_next_token(&start);
+            char *name_tok = smali_next_token(&start);
+            char *type_tok = smali_next_token(&start);
+            if (reg_tok && name_tok && type_tok) {
+                m->local_regs = realloc(m->local_regs, (m->local_count + 1) * sizeof(uint32_t));
+                m->local_names = realloc(m->local_names, (m->local_count + 1) * sizeof(char *));
+                m->local_types = realloc(m->local_types, (m->local_count + 1) * sizeof(char *));
+                m->local_sigs = realloc(m->local_sigs, (m->local_count + 1) * sizeof(char *));
+                m->local_regs[m->local_count] = smali_parse_register(reg_tok);
+                m->local_names[m->local_count] = strdup(name_tok);
+                m->local_types[m->local_count] = strdup(type_tok);
+                char *sig_tok = smali_next_token(&start);
+                if (sig_tok && strcmp(sig_tok, "=") == 0) {
+                    free(sig_tok);
+                    sig_tok = smali_next_token(&start);
+                }
+                m->local_sigs[m->local_count] = sig_tok ? strdup(sig_tok) : NULL;
+                if (sig_tok) free(sig_tok);
+                m->local_count++;
+                free(name_tok);
+                free(type_tok);
+                free(reg_tok);
+            } else {
+                if (reg_tok) free(reg_tok);
+                if (name_tok) free(name_tok);
+                if (type_tok) free(type_tok);
+            }
+            free(tok);
+            continue;
+        } else if (strcmp(tok, ".array-data") == 0) {
+            char *width_tok = smali_next_token(&start);
+            uint16_t elem_width = width_tok ? (uint16_t)atoi(width_tok) : 4;
+            if (width_tok) free(width_tok);
+            if (m->insns_count >= m->insns_cap) {
+                m->insns_cap = m->insns_cap ? m->insns_cap * 2 : 32;
+                m->insns = realloc(m->insns, m->insns_cap * sizeof(smali_insn_t));
+            }
+            smali_insn_t *ins = &m->insns[m->insns_count++];
+            memset(ins, 0, sizeof(smali_insn_t));
+            ins->fmt = 103; /* array-data payload */
+            ins->payload_element_width = elem_width;
+            ins->line_number = current_line;
+            current_line = -1;
+
+            /* collect values until .end array-data */
+            while (*start) {
+                char *line_end_inner = strchr(start, '\n');
+                if (!line_end_inner) line_end_inner = start + strlen(start);
+                char *p_inner = start;
+                char *tok_inner = smali_next_token(&p_inner);
+                if (tok_inner) {
+                    if (strcmp(tok_inner, ".end") == 0) {
+                        char *next_inner = smali_next_token(&p_inner);
+                        if (next_inner && strcmp(next_inner, "array-data") == 0) {
+                            free(next_inner);
+                            free(tok_inner);
+                            start = line_end_inner;
+                            if (*start == '\n') start++;
+                            break;
+                        }
+                        if (next_inner) free(next_inner);
+                    } else {
+                        uint8_t *expanded = realloc(ins->payload_data, ins->payload_data_len + (uint32_t)elem_width);
+                        if (expanded) {
+                            ins->payload_data = expanded;
+                            int32_t val = (int32_t)strtol(tok_inner, NULL, 0);
+                            for (int bi2 = 0; bi2 < (int)elem_width; bi2++) {
+                                ins->payload_data[ins->payload_data_len + bi2] = (val >> (bi2 * 8)) & 0xFF;
+                            }
+                            ins->payload_data_len += elem_width;
+                        }
+                    }
+                    free(tok_inner);
+                }
+                start = line_end_inner;
+                if (*start == '\n') start++;
+            }
+            free(tok);
+            continue;
         } else if (strcmp(tok, ".registers") == 0) {
             char *count_tok = smali_next_token(&start);
             if (count_tok) { m->registers_count = atoi(count_tok); free(count_tok); }
@@ -312,6 +430,8 @@ int smali_parse_method_body(smali_ctx_def_t *ctx, smali_method_def_t *m, char **
             smali_insn_t *ins = &m->insns[m->insns_count++];
             memset(ins, 0, sizeof(smali_insn_t));
             ins->fmt = is_packed ? 101 : 102;
+            ins->line_number = current_line;
+            current_line = -1;
             
             if (is_packed) {
                 char *first_key_tok = smali_next_token(&start);
@@ -417,6 +537,8 @@ int smali_parse_method_body(smali_ctx_def_t *ctx, smali_method_def_t *m, char **
                 ins->op = op->op;
                 ins->fmt = op->fmt;
                 ins->kind = op->kind;
+                ins->line_number = current_line;
+                current_line = -1;
                 
                 if (ins->fmt == 1 || ins->fmt == 21 || ins->fmt == 23 || ins->fmt == 24) {
                     char *vA_tok = smali_next_token(&start);

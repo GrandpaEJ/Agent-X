@@ -25,6 +25,7 @@ typedef struct {
     char *ref_str;
     int32_t lit;
     char *label_target;
+    int line_number;     /* .line directive value, -1 if none */
 
     // For payloads (.packed-switch, .sparse-switch, .array-data)
     char **payload_targets;
@@ -66,6 +67,16 @@ typedef struct {
     smali_catch_t *catches;
     uint32_t catches_count;
     uint32_t catches_cap;
+    /* debug info */
+    int prologue_set;
+    int epilogue_set;
+    char **param_names;
+    uint32_t param_name_count;
+    char **local_names;
+    char **local_types;
+    char **local_sigs;
+    uint32_t *local_regs;
+    uint32_t local_count;
 } smali_method_def_t;
 
 typedef struct {

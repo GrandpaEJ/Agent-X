@@ -232,6 +232,45 @@ static int comp_method_key(const void *a, const void *b) {
     return (pIdxA < pIdxB) ? -1 : 1;
 }
 
+static void ensure_names_in_strings(smali_ctx_def_t *ctx) {
+    if (ctx->fields.count > 100000 || ctx->methods.count > 100000) return;
+    for (uint32_t i = 0; i < ctx->fields.count; i++) {
+        const char *key = ctx->fields.strings[i];
+        if (!key) continue;
+        char *arrow = strstr(key, "->");
+        char *colon = strchr(key, ':');
+        if (arrow && colon && colon > arrow + 2) {
+            char *name = strndup(arrow + 2, colon - (arrow + 2));
+            if (name && name[0]) {
+                smali_pool_add(&ctx->strings, name);
+            }
+            free(name);
+        }
+    }
+    for (uint32_t i = 0; i < ctx->methods.count; i++) {
+        const char *key = ctx->methods.strings[i];
+        if (!key) continue;
+        char *arrow = strstr(key, "->");
+        if (arrow) {
+            char *colon = strchr(key, ':');
+            char *paren = strchr(key, '(');
+            if (colon && colon > arrow + 2) {
+                char *name = strndup(arrow + 2, colon - (arrow + 2));
+                if (name && name[0]) {
+                    smali_pool_add(&ctx->strings, name);
+                }
+                free(name);
+            } else if (paren && paren > arrow + 2) {
+                char *name = strndup(arrow + 2, paren - (arrow + 2));
+                if (name && name[0]) {
+                    smali_pool_add(&ctx->strings, name);
+                }
+                free(name);
+            }
+        }
+    }
+}
+
 void smali_pool_build_all(smali_ctx_def_t *ctx) {
     smali_pool_init(&ctx->strings);
     smali_pool_init(&ctx->types);
@@ -356,6 +395,37 @@ void smali_pool_build_all(smali_ctx_def_t *ctx) {
             char key[1024];
             snprintf(key, sizeof(key), "%s->%s:%s", c->descriptor, c->instance_fields[j].name, c->instance_fields[j].type);
             smali_pool_add(&ctx->fields, key);
+        }
+    }
+
+    /* Add names from field/method pools to strings for writer lookups */
+    for (uint32_t i = 0; i < ctx->fields.count; i++) {
+        const char *key = ctx->fields.strings[i];
+        if (!key) continue;
+        char *arrow = strstr(key, "->");
+        char *colon = strchr(key, ':');
+        if (arrow && colon && colon > arrow + 2) {
+            char *name = strndup(arrow + 2, colon - (arrow + 2));
+            if (name && name[0]) smali_pool_add(&ctx->strings, name);
+            free(name);
+        }
+    }
+    for (uint32_t i = 0; i < ctx->methods.count; i++) {
+        const char *key = ctx->methods.strings[i];
+        if (!key) continue;
+        char *arrow = strstr(key, "->");
+        if (arrow) {
+            char *colon = strchr(key, ':');
+            char *paren = strchr(key, '(');
+            if (colon && colon > arrow + 2) {
+                char *name = strndup(arrow + 2, colon - (arrow + 2));
+                if (name && name[0]) smali_pool_add(&ctx->strings, name);
+                free(name);
+            } else if (paren && paren > arrow + 2) {
+                char *name = strndup(arrow + 2, paren - (arrow + 2));
+                if (name && name[0]) smali_pool_add(&ctx->strings, name);
+                free(name);
+            }
         }
     }
 

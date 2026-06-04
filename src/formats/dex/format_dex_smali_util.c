@@ -138,3 +138,18 @@ int smali_uleb(const uint8_t *data, uint32_t *val, const uint8_t **next) {
     if (next) *next = data + i;
     return i;
 }
+
+int smali_sleb(const uint8_t *data, int32_t *val, const uint8_t **next) {
+    *val = 0; int shift = 0, i = 0;
+    uint8_t byte;
+    while (1) {
+        byte = data[i++];
+        *val |= (int32_t)(byte & 0x7F) << shift;
+        shift += 7;
+        if (!(byte & 0x80)) break;
+    }
+    if (shift < 32 && (byte & 0x40))
+        *val |= -(int32_t)(1 << shift);
+    if (next) *next = data + i;
+    return i;
+}

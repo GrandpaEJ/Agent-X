@@ -27,6 +27,7 @@ static uint32_t get_insn_size_words(smali_insn_t *ins) {
         case 25: return 3; // F_31c
         case 101: return 4 + ins->payload_targets_count * 2; // packed-switch-payload
         case 102: return 2 + ins->payload_targets_count * 4; // sparse-switch-payload
+        case 103: return 2 + (ins->payload_data_len + 1) / 2 + 2; // array-data payload (ident+width+size+data, padded to ushort)
         default: return 1;
     }
 }
@@ -107,6 +108,23 @@ uint32_t smali_encode_method_insns(smali_ctx_def_t *ctx, smali_method_def_t *m, 
                     out_buf[write_idx++] = (target_rel_off >> 16) & 0xFFFF;
                 }
             }
+            continue;
+        }
+        if (ins->fmt == 103) {
+            /* array-data payload */
+            out_buf[write_idx++] = 0x0300; /* ident */
+            out_buf[write_idx++] = ins->payload_element_width;
+            uint32_t count = ins->payload_data_len / ins->payload_element_width;
+            out_buf[write_idx++] = count & 0xFFFF;
+            out_buf[write_idx++] = (count >> 16) & 0xFFFF;
+            for (uint32_t bi2 = 0; bi2 < ins->payload_data_len; bi2++) {
+                if (bi2 % 2 == 0) {
+                    out_buf[write_idx] = ins->payload_data[bi2];
+                } else {
+                    out_buf[write_idx++] |= (uint16_t)ins->payload_data[bi2] << 8;
+                }
+            }
+            if (ins->payload_data_len % 2 != 0) write_idx++;
             continue;
         }
         uint32_t ins_off = insn_offsets[i];
