@@ -66,6 +66,42 @@ static void add_sig_types(smali_pool_strings_t *strings, const char *sig) {
     }
 }
 
+static void add_shorty_string(smali_pool_strings_t *strings, const char *sig) {
+    char shorty[512];
+    int s_idx = 0;
+    const char *close_paren = strchr(sig, ')');
+    if (close_paren) {
+        char ret_char = close_paren[1];
+        shorty[s_idx++] = (ret_char == 'L' || ret_char == '[') ? 'L' : ret_char;
+    } else {
+        shorty[s_idx++] = 'V';
+    }
+    
+    const char *p = sig;
+    if (*p == '(') p++;
+    while (p && *p && *p != ')') {
+        if (*p == 'L') {
+            shorty[s_idx++] = 'L';
+            while (*p && *p != ';') p++;
+            if (*p) p++;
+        } else if (*p == '[') {
+            shorty[s_idx++] = 'L';
+            while (*p == '[') p++;
+            if (*p == 'L') {
+                while (*p && *p != ';') p++;
+                if (*p) p++;
+            } else {
+                p++;
+            }
+        } else {
+            shorty[s_idx++] = *p;
+            p++;
+        }
+    }
+    shorty[s_idx] = '\0';
+    smali_pool_add(strings, shorty);
+}
+
 static smali_ctx_def_t *s_sort_ctx = NULL;
 
 static int comp_proto_sig(const void *a, const void *b) {
@@ -231,6 +267,7 @@ void smali_pool_build_all(smali_ctx_def_t *ctx) {
                 smali_pool_add(&ctx->strings, m->name);
                 smali_pool_add(&ctx->strings, m->signature);
                 add_sig_types(&ctx->strings, m->signature);
+                add_shorty_string(&ctx->strings, m->signature);
 
                 for (uint32_t c_idx = 0; c_idx < m->catches_count; c_idx++) {
                     if (m->catches[c_idx].type) {
@@ -258,6 +295,7 @@ void smali_pool_build_all(smali_ctx_def_t *ctx) {
                                 smali_pool_add(&ctx->strings, name_part);
                                 smali_pool_add(&ctx->strings, paren);
                                 add_sig_types(&ctx->strings, paren);
+                                add_shorty_string(&ctx->strings, paren);
                                 free(name_part);
                             }
                             free(class_part);
@@ -273,7 +311,9 @@ void smali_pool_build_all(smali_ctx_def_t *ctx) {
     // 2. Build Type Pool
     for (uint32_t i = 0; i < ctx->strings.count; i++) {
         const char *s = ctx->strings.strings[i];
-        if (s[0] == 'L' || s[0] == '[' || (s[0] >= 'A' && s[0] <= 'Z' && strlen(s) == 1)) {
+        if (s[0] == 'L' || s[0] == '[' || 
+            (strlen(s) == 1 && (s[0] == 'V' || s[0] == 'Z' || s[0] == 'B' || s[0] == 'S' || 
+                                s[0] == 'C' || s[0] == 'I' || s[0] == 'J' || s[0] == 'F' || s[0] == 'D'))) {
             smali_pool_add(&ctx->types, s);
         }
     }
