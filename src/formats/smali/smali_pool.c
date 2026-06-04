@@ -311,7 +311,7 @@ void smali_pool_build_all(smali_ctx_def_t *ctx) {
     // 2. Build Type Pool
     for (uint32_t i = 0; i < ctx->strings.count; i++) {
         const char *s = ctx->strings.strings[i];
-        if (s[0] == 'L' || s[0] == '[' || 
+        if ((s[0] == 'L' && strchr(s, ';') && !strstr(s, "->")) || s[0] == '[' || 
             (strlen(s) == 1 && (s[0] == 'V' || s[0] == 'Z' || s[0] == 'B' || s[0] == 'S' || 
                                 s[0] == 'C' || s[0] == 'I' || s[0] == 'J' || s[0] == 'F' || s[0] == 'D'))) {
             smali_pool_add(&ctx->types, s);

@@ -47,7 +47,7 @@ static const op_entry optab[] = {
     FMT(0x18, F_51l, K_NONE, "const-wide"),
     FMT(0x19, F_21h, K_NONE, "const-wide/high16"),
     FMT(0x1A, F_21c, K_STRING, "const-string"),
-    FMT(0x1B, F_21c, K_STRING, "const-string/jumbo"),
+    FMT(0x1B, F_21c, K_STRING, "const-string-jumbo"),
     FMT(0x1C, F_21c, K_TYPE, "const-class"),
     FMT(0x1D, F_11x, K_NONE, "monitor-enter"),
     FMT(0x1E, F_11x, K_NONE, "monitor-exit"),
@@ -140,7 +140,7 @@ static const op_entry optab[] = {
     FMT(0x7E, F_12x, K_NONE, "not-long"),
     FMT(0x7F, F_12x, K_NONE, "neg-float"),
     FMT(0x80, F_12x, K_NONE, "not-float"),
-    FMT(0x81, F_12x, K_NONE, "neg-double"),
+    FMT(0x81, F_12x, K_NONE, "int-to-long"),
     FMT(0x82, F_12x, K_NONE, "not-double"),
     FMT(0x83, F_12x, K_NONE, "int-to-long"),
     FMT(0x84, F_12x, K_NONE, "int-to-float"),
@@ -300,8 +300,14 @@ int dex_decode_insn(const uint16_t *insns, int offset, uint32_t *out_op,
     case F_21s:
     case F_21h: {
         vA = arg;
-        ref = insns[offset + 1];
-        words = 2;
+        if (op == 0x1B) {
+            /* const-string/jumbo: 32-bit string index */
+            ref = (uint32_t)insns[offset + 1] | ((uint32_t)insns[offset + 2] << 16);
+            words = 3;
+        } else {
+            ref = insns[offset + 1];
+            words = 2;
+        }
         break;
     }
     case F_22c:
