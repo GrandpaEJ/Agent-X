@@ -24,8 +24,11 @@ static void buf_free(smali_buf_t *b) {
 
 static void buf_write(smali_buf_t *b, const void *data, uint32_t size) {
     if (b->len + size > b->cap) {
+        uint32_t old_cap = b->cap;
         while (b->len + size > b->cap) b->cap *= 2;
         b->buf = realloc(b->buf, b->cap);
+        /* Zero new portion */
+        memset(b->buf + old_cap, 0, b->cap - old_cap);
     }
     memcpy(b->buf + b->len, data, size);
     b->len += size;
@@ -616,21 +619,51 @@ int write_assembled_dex(smali_ctx_def_t *ctx, const char *out_dex) {
     // 3. Write Code Items and record offsets
     uint32_t **direct_code_offsets = malloc(class_count * sizeof(uint32_t *));
     uint32_t **virtual_code_offsets = malloc(class_count * sizeof(uint32_t *));
+    uint32_t **direct_code_ends = malloc(class_count * sizeof(uint32_t *));
+    uint32_t **virtual_code_ends = malloc(class_count * sizeof(uint32_t *));
     for (uint32_t i = 0; i < class_count; i++) {
         smali_class_def_t *c = &ctx->classes[i];
         direct_code_offsets[i] = c->direct_method_count ? malloc(c->direct_method_count * sizeof(uint32_t)) : NULL;
         virtual_code_offsets[i] = c->virtual_method_count ? malloc(c->virtual_method_count * sizeof(uint32_t)) : NULL;
+        direct_code_ends[i] = c->direct_method_count ? malloc(c->direct_method_count * sizeof(uint32_t)) : NULL;
+        virtual_code_ends[i] = c->virtual_method_count ? malloc(c->virtual_method_count * sizeof(uint32_t)) : NULL;
         for (uint32_t j = 0; j < c->direct_method_count; j++) {
+            uint32_t before = b.len;
             direct_code_offsets[i][j] = write_code_item(ctx, &b, &c->direct_methods[j]);
+            direct_code_ends[i][j] = b.len;
         }
         for (uint32_t j = 0; j < c->virtual_method_count; j++) {
+            uint32_t before = b.len;
             virtual_code_offsets[i][j] = write_code_item(ctx, &b, &c->virtual_methods[j]);
+            virtual_code_ends[i][j] = b.len;
         }
+    }
+    /* Find the actual end of the code section */
+    uint32_t code_section_end = 0;
+    for (uint32_t i = 0; i < class_count; i++) {
+        smali_class_def_t *c2 = &ctx->classes[i];
+        for (uint32_t j = 0; j < c2->direct_method_count; j++)
+            if (direct_code_ends[i] && direct_code_ends[i][j] > code_section_end) code_section_end = direct_code_ends[i][j];
+        for (uint32_t j = 0; j < c2->virtual_method_count; j++)
+            if (virtual_code_ends[i] && virtual_code_ends[i][j] > code_section_end) code_section_end = virtual_code_ends[i][j];
+    }
+    /* Zero-fill gap between code section end and next aligned position */
+    align_4(&b);
+    if (code_section_end > 0 && b.len > code_section_end) {
+        memset(b.buf + code_section_end, 0, b.len - code_section_end);
     }
     align_4(&b);
 
     // 4. Write Class Data Items and record offsets
     uint32_t *class_data_offsets = malloc(class_count * 4);
+    /* Zero-fill from end of code section to class_data start */
+    align_4(&b);
+    {
+        uint32_t expected = b.len;
+        /* zero all bytes from here to b.cap for safety */
+        if (b.len < b.cap)
+            memset(b.buf + b.len, 0, b.cap - b.len);
+    }
     for (uint32_t i = 0; i < class_count; i++) {
         smali_class_def_t *c = &ctx->classes[i];
         class_data_offsets[i] = b.len;
@@ -958,11 +991,6 @@ int write_assembled_dex(smali_ctx_def_t *ctx, const char *out_dex) {
     memcpy(b.buf + 56, header_offsets, sizeof(header_offsets));
     *(uint32_t *)(b.buf + 52) = map_off;
 
-    // Zero out unused buffer capacity
-    if (b.len < b.cap) {
-        memset(b.buf + b.len, 0, b.cap - b.len);
-    }
-
     // Compute checksums
     // 1. SHA-1 signature over all bytes from offset 32 to end of file, written to offset 12.
     smali_sha1(b.buf + 32, b.len - 32, b.buf + 12);
@@ -981,7 +1009,10 @@ int write_assembled_dex(smali_ctx_def_t *ctx, const char *out_dex) {
     for (uint32_t i = 0; i < class_count; i++) {
         if (direct_code_offsets[i]) free(direct_code_offsets[i]);
         if (virtual_code_offsets[i]) free(virtual_code_offsets[i]);
+        if (direct_code_ends[i]) free(direct_code_ends[i]);
+        if (virtual_code_ends[i]) free(virtual_code_ends[i]);
     }
-    free(direct_code_offsets); free(virtual_code_offsets); free(class_data_offsets);
+    free(direct_code_offsets); free(virtual_code_offsets);
+    free(direct_code_ends); free(virtual_code_ends); free(class_data_offsets);
     return fp ? 0 : -1;
 }
