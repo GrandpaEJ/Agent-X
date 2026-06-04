@@ -257,7 +257,68 @@ static uint32_t write_code_item(smali_ctx_def_t *ctx, smali_buf_t *b, smali_meth
     return offset;
 }
 
+typedef struct {
+    uint16_t type;
+    uint32_t size;
+    uint32_t offset;
+} map_item_entry_t;
+
+static int comp_map_entries(const void *a, const void *b) {
+    const map_item_entry_t *ma = (const map_item_entry_t *)a;
+    const map_item_entry_t *mb = (const map_item_entry_t *)b;
+    if (ma->offset != mb->offset) {
+        return (ma->offset < mb->offset) ? -1 : 1;
+    }
+    return 0;
+}
+
+static smali_ctx_def_t *s_write_ctx = NULL;
+static const char *s_current_class_desc = NULL;
+
+static int comp_class_fields(const void *a, const void *b) {
+    const smali_field_def_t *fa = (const smali_field_def_t *)a;
+    const smali_field_def_t *fb = (const smali_field_def_t *)b;
+    char keyA[1024], keyB[1024];
+    snprintf(keyA, sizeof(keyA), "%s->%s:%s", s_current_class_desc, fa->name, fa->type);
+    snprintf(keyB, sizeof(keyB), "%s->%s:%s", s_current_class_desc, fb->name, fb->type);
+    uint32_t idxA = smali_pool_find(&s_write_ctx->fields, keyA);
+    uint32_t idxB = smali_pool_find(&s_write_ctx->fields, keyB);
+    return (idxA < idxB) ? -1 : 1;
+}
+
+static int comp_class_methods(const void *a, const void *b) {
+    const smali_method_def_t *ma = (const smali_method_def_t *)a;
+    const smali_method_def_t *mb = (const smali_method_def_t *)b;
+    char keyA[1024], keyB[1024];
+    snprintf(keyA, sizeof(keyA), "%s->%s%s", s_current_class_desc, ma->name, ma->signature);
+    snprintf(keyB, sizeof(keyB), "%s->%s%s", s_current_class_desc, mb->name, mb->signature);
+    uint32_t idxA = smali_pool_find(&s_write_ctx->methods, keyA);
+    uint32_t idxB = smali_pool_find(&s_write_ctx->methods, keyB);
+    return (idxA < idxB) ? -1 : 1;
+}
+
 int write_assembled_dex(smali_ctx_def_t *ctx, const char *out_dex) {
+    // Sort all class fields and methods by their indexes in the pools first
+    s_write_ctx = ctx;
+    for (uint32_t i = 0; i < ctx->class_count; i++) {
+        smali_class_def_t *c = &ctx->classes[i];
+        s_current_class_desc = c->descriptor;
+        if (c->static_field_count > 1) {
+            qsort(c->static_fields, c->static_field_count, sizeof(smali_field_def_t), comp_class_fields);
+        }
+        if (c->instance_field_count > 1) {
+            qsort(c->instance_fields, c->instance_field_count, sizeof(smali_field_def_t), comp_class_fields);
+        }
+        if (c->direct_method_count > 1) {
+            qsort(c->direct_methods, c->direct_method_count, sizeof(smali_method_def_t), comp_class_methods);
+        }
+        if (c->virtual_method_count > 1) {
+            qsort(c->virtual_methods, c->virtual_method_count, sizeof(smali_method_def_t), comp_class_methods);
+        }
+    }
+    s_write_ctx = NULL;
+    s_current_class_desc = NULL;
+
     smali_buf_t b; buf_init(&b);
 
     uint32_t string_count = ctx->strings.count;
@@ -461,10 +522,38 @@ int write_assembled_dex(smali_ctx_def_t *ctx, const char *out_dex) {
     // Proto IDs
     for (uint32_t i = 0; i < proto_count; i++) {
         const char *sig = ctx->protos.strings[i];
-        char shorty[64] = "V"; // Simplified shorty
-        // Extract return type descriptor
+        char shorty[512];
+        int s_idx = 0;
         const char *close_paren = strchr(sig, ')');
-        if (close_paren) shorty[0] = (close_paren[1] == 'L' || close_paren[1] == '[') ? 'L' : close_paren[1];
+        if (close_paren) {
+            char ret_char = close_paren[1];
+            shorty[s_idx++] = (ret_char == 'L' || ret_char == '[') ? 'L' : ret_char;
+        } else {
+            shorty[s_idx++] = 'V';
+        }
+        
+        const char *p = sig;
+        if (*p == '(') p++;
+        while (p && *p && *p != ')') {
+            if (*p == 'L') {
+                shorty[s_idx++] = 'L';
+                while (*p && *p != ';') p++;
+                if (*p) p++;
+            } else if (*p == '[') {
+                shorty[s_idx++] = 'L';
+                while (*p == '[') p++;
+                if (*p == 'L') {
+                    while (*p && *p != ';') p++;
+                    if (*p) p++;
+                } else {
+                    p++;
+                }
+            } else {
+                shorty[s_idx++] = *p;
+                p++;
+            }
+        }
+        shorty[s_idx] = '\0';
         
         uint32_t proto_off = proto_ids_off + i * 12;
         *(uint32_t *)(b.buf + proto_off) = smali_pool_find(&ctx->strings, shorty);
@@ -528,14 +617,125 @@ int write_assembled_dex(smali_ctx_def_t *ctx, const char *out_dex) {
     // Write Map List at the end
     align_4(&b);
     uint32_t map_off = b.len;
-    buf_write_u32(&b, 7); // 7 map items
-    write_map_item(&b, 0x0000, string_count, string_ids_off);
-    write_map_item(&b, 0x0001, type_count, type_ids_off);
-    write_map_item(&b, 0x0002, proto_count, proto_ids_off);
-    write_map_item(&b, 0x0003, field_count, field_ids_off);
-    write_map_item(&b, 0x0004, method_count, method_ids_off);
-    write_map_item(&b, 0x0006, class_count, class_defs_off);
-    write_map_item(&b, 0x1000, 1, map_off);
+
+    // Collect all map entries
+    map_item_entry_t entries[16];
+    uint32_t entry_count = 0;
+
+    // Header
+    entries[entry_count++] = (map_item_entry_t){0x0000, 1, 0};
+    
+    // String IDs
+    if (string_count > 0) {
+        entries[entry_count++] = (map_item_entry_t){0x0001, string_count, string_ids_off};
+    }
+    // Type IDs
+    if (type_count > 0) {
+        entries[entry_count++] = (map_item_entry_t){0x0002, type_count, type_ids_off};
+    }
+    // Proto IDs
+    if (proto_count > 0) {
+        entries[entry_count++] = (map_item_entry_t){0x0003, proto_count, proto_ids_off};
+    }
+    // Field IDs
+    if (field_count > 0) {
+        entries[entry_count++] = (map_item_entry_t){0x0004, field_count, field_ids_off};
+    }
+    // Method IDs
+    if (method_count > 0) {
+        entries[entry_count++] = (map_item_entry_t){0x0005, method_count, method_ids_off};
+    }
+    // Class Defs
+    if (class_count > 0) {
+        entries[entry_count++] = (map_item_entry_t){0x0006, class_count, class_defs_off};
+    }
+
+    // Now for data section types:
+    // String Data Items
+    if (string_count > 0) {
+        entries[entry_count++] = (map_item_entry_t){0x2002, string_count, string_offsets[0]};
+    }
+
+    // Type Lists (from proto params and interfaces)
+    uint32_t first_type_list_off = 0;
+    uint32_t type_list_count = 0;
+    for (uint32_t i = 0; i < proto_count; i++) {
+        if (proto_param_offsets[i] != 0) {
+            if (first_type_list_off == 0 || proto_param_offsets[i] < first_type_list_off) {
+                first_type_list_off = proto_param_offsets[i];
+            }
+            type_list_count++;
+        }
+    }
+    for (uint32_t i = 0; i < class_count; i++) {
+        if (interfaces_offsets[i] != 0) {
+            if (first_type_list_off == 0 || interfaces_offsets[i] < first_type_list_off) {
+                first_type_list_off = interfaces_offsets[i];
+            }
+            type_list_count++;
+        }
+    }
+    if (type_list_count > 0) {
+        entries[entry_count++] = (map_item_entry_t){0x1001, type_list_count, first_type_list_off};
+    }
+
+    // Code Items
+    uint32_t first_code_off = 0;
+    uint32_t total_code_count = 0;
+    for (uint32_t i = 0; i < class_count; i++) {
+        smali_class_def_t *c = &ctx->classes[i];
+        for (uint32_t j = 0; j < c->direct_method_count; j++) {
+            if (direct_code_offsets[i][j] != 0) {
+                if (first_code_off == 0 || direct_code_offsets[i][j] < first_code_off) {
+                    first_code_off = direct_code_offsets[i][j];
+                }
+                total_code_count++;
+            }
+        }
+        for (uint32_t j = 0; j < c->virtual_method_count; j++) {
+            if (virtual_code_offsets[i][j] != 0) {
+                if (first_code_off == 0 || virtual_code_offsets[i][j] < first_code_off) {
+                    first_code_off = virtual_code_offsets[i][j];
+                }
+                total_code_count++;
+            }
+        }
+    }
+    if (total_code_count > 0) {
+        entries[entry_count++] = (map_item_entry_t){0x2001, total_code_count, first_code_off};
+    }
+
+    // Class Data Items
+    if (class_count > 0) {
+        entries[entry_count++] = (map_item_entry_t){0x2000, class_count, class_data_offsets[0]};
+    }
+
+    // Encoded Array Items (Static field initial values)
+    uint32_t first_static_val_off = 0;
+    uint32_t static_val_count = 0;
+    for (uint32_t i = 0; i < class_count; i++) {
+        if (static_values_offsets[i] != 0) {
+            if (first_static_val_off == 0 || static_values_offsets[i] < first_static_val_off) {
+                first_static_val_off = static_values_offsets[i];
+            }
+            static_val_count++;
+        }
+    }
+    if (static_val_count > 0) {
+        entries[entry_count++] = (map_item_entry_t){0x2005, static_val_count, first_static_val_off};
+    }
+
+    // Map List itself
+    entries[entry_count++] = (map_item_entry_t){0x1000, 1, map_off};
+
+    // Sort entries by offset (as required by DEX spec)
+    qsort(entries, entry_count, sizeof(map_item_entry_t), comp_map_entries);
+
+    // Write map_list to buffer
+    buf_write_u32(&b, entry_count);
+    for (uint32_t i = 0; i < entry_count; i++) {
+        write_map_item(&b, entries[i].type, entries[i].size, entries[i].offset);
+    }
 
     // Fill Header fields
     memcpy(b.buf, "dex\n035\0", 8);
@@ -544,13 +744,14 @@ int write_assembled_dex(smali_ctx_def_t *ctx, const char *out_dex) {
     *(uint32_t *)(b.buf + 40) = 0x12345678; // endian_tag
     
     // Write table counts and offsets in header
-    uint32_t header_offsets[12] = {
+    uint32_t header_offsets[14] = {
         string_count, string_ids_off,
         type_count, type_ids_off,
         proto_count, proto_ids_off,
         field_count, field_ids_off,
         method_count, method_ids_off,
-        class_count, class_defs_off
+        class_count, class_defs_off,
+        b.len - data_off, data_off
     };
     memcpy(b.buf + 56, header_offsets, sizeof(header_offsets));
     *(uint32_t *)(b.buf + 52) = map_off;
