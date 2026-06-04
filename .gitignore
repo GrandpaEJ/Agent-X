@@ -17,7 +17,7 @@ agent-x.pid
 # Keys and APKs/Jars
 test.jks
 *.jks
-apk/
+/apk/
 *.apk
 *.jar
 
