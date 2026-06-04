@@ -354,7 +354,7 @@ cJSON* tools_get_definitions(void) {
         "{\"type\": \"function\", \"function\": {\"name\": \"adb_pull\", \"description\": \"Pull a file from an ADB-connected device\", \"parameters\": {\"type\": \"object\", \"properties\": {\"remote\": {\"type\": \"string\", \"description\": \"Remote file path on device\"}, \"local\": {\"type\": \"string\", \"description\": \"Local destination path\"}}, \"required\": [\"remote\", \"local\"]}}},"
         "{\"type\": \"function\", \"function\": {\"name\": \"adb_uninstall\", \"description\": \"Uninstall a package from an ADB-connected device\", \"parameters\": {\"type\": \"object\", \"properties\": {\"package\": {\"type\": \"string\", \"description\": \"Package name to uninstall\"}}, \"required\": [\"package\"]}}},"
         "{\"type\": \"function\", \"function\": {\"name\": \"read_axml\", \"description\": \"Decode Android Binary XML (AXML) to human-readable XML text\", \"parameters\": {\"type\": \"object\", \"properties\": {\"path\": {\"type\": \"string\", \"description\": \"Path to the binary XML file\"}}, \"required\": [\"path\"]}}},"
-        "{\"type\": \"function\", \"function\": {\"name\": \"read_dex\", \"description\": \"Parse and dump DEX bytecode file contents\", \"parameters\": {\"type\": \"object\", \"properties\": {\"path\": {\"type\": \"string\", \"description\": \"Path to the DEX file\"}}, \"required\": [\"path\"]}}},"
+        "{\"type\": \"function\", \"function\": {\"name\": \"read_dex\", \"description\": \"Parse and dump DEX bytecode file contents or disassemble into a directory\", \"parameters\": {\"type\": \"object\", \"properties\": {\"path\": {\"type\": \"string\", \"description\": \"Path to the DEX file\"}, \"out_dir\": {\"type\": \"string\", \"description\": \"Optional target directory to disassemble all classes into as Smali files\"}}, \"required\": [\"path\"]}}},"
         "{\"type\": \"function\", \"function\": {\"name\": \"analyze_apk\", \"description\": \"Analyze an APK file: decode manifest, parse DEX classes, and list files\", \"parameters\": {\"type\": \"object\", \"properties\": {\"path\": {\"type\": \"string\", \"description\": \"Path to the APK file\"}}, \"required\": [\"path\"]}}},"
         "{\"type\": \"function\", \"function\": {\"name\": \"disasm_dex\", \"description\": \"Disassemble a DEX class to Smali\", \"parameters\": {\"type\": \"object\", \"properties\": {\"path\": {\"type\": \"string\", \"description\": \"Path to the DEX file\"}, \"class\": {\"type\": \"number\", \"description\": \"Class index to disassemble (default: 0)\"}}, \"required\": [\"path\"]}}},"
         "{\"type\": \"function\", \"function\": {\"name\": \"smali_assemble\", \"description\": \"Assemble smali directory into a DEX file\", \"parameters\": {\"type\": \"object\", \"properties\": {\"src_dir\": {\"type\": \"string\", \"description\": \"Path to smali source directory\"}, \"out_dex\": {\"type\": \"string\", \"description\": \"Output DEX file path\"}}, \"required\": [\"src_dir\", \"out_dex\"]}}},"
@@ -829,8 +829,75 @@ static char* execute_read_dex(cJSON* args) {
     fclose(fp);
 
     dex_ctx *ctx = dex_parse(buf, sz);
-    free(buf);
-    if (!ctx) return strdup("{\"error\": \"Invalid DEX file\"}");
+    if (!ctx) { free(buf); return strdup("{\"error\": \"Invalid DEX file\"}"); }
+
+    cJSON* out_dir_obj = cJSON_GetObjectItem(args, "out_dir");
+    if (out_dir_obj && cJSON_IsString(out_dir_obj)) {
+        const char *out_dir = out_dir_obj->valuestring;
+        uint32_t ci = 0;
+        while (1) {
+            char *smali_code = dex_to_smali_class(ctx, ci);
+            if (!smali_code) break;
+            
+            char *class_line = strdup(smali_code);
+            char *nl = strchr(class_line, '\n');
+            if (nl) *nl = '\0';
+            
+            char *semi = strchr(class_line, ';');
+            if (semi) {
+                *semi = '\0';
+                char *desc = strrchr(class_line, 'L');
+                if (desc) {
+                    desc++; // Skip the 'L'
+                    char filepath[1024];
+                    snprintf(filepath, sizeof(filepath), "%s/%s.smali", out_dir, desc);
+                    
+                    char dirpath[1024];
+                    snprintf(dirpath, sizeof(dirpath), "%s/%s.smali", out_dir, desc);
+                    char *last_slash = strrchr(dirpath, '/');
+                    if (last_slash) {
+                        *last_slash = '\0';
+                        char tmp[1024];
+                        snprintf(tmp, sizeof(tmp), "%s", dirpath);
+                        for (char *p = tmp + 1; *p; p++) {
+                            if (*p == '/') {
+                                *p = '\0';
+                                #if defined(_WIN32)
+                                mkdir(tmp);
+                                #else
+                                mkdir(tmp, 0777);
+                                #endif
+                                *p = '/';
+                            }
+                        }
+                        #if defined(_WIN32)
+                        mkdir(tmp);
+                        #else
+                        mkdir(tmp, 0777);
+                        #endif
+                    }
+                    
+                    FILE *out_fp = fopen(filepath, "w");
+                    if (out_fp) {
+                        fputs(smali_code, out_fp);
+                        fclose(out_fp);
+                    }
+                }
+            }
+            free(class_line);
+            free(smali_code);
+            ci++;
+        }
+        
+        cJSON *res = cJSON_CreateObject();
+        cJSON_AddStringToObject(res, "status", "success");
+        cJSON_AddNumberToObject(res, "class_count", ci);
+        char *res_str = cJSON_PrintUnformatted(res);
+        cJSON_Delete(res);
+        dex_free(ctx);
+        free(buf);
+        return res_str;
+    }
 
     char *dump = dex_dump(ctx);
     cJSON *res = cJSON_CreateObject();
@@ -839,6 +906,7 @@ static char* execute_read_dex(cJSON* args) {
     cJSON_Delete(res);
     free(dump);
     dex_free(ctx);
+    free(buf);
     return res_str;
 }
 
