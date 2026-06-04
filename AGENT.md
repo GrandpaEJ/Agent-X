@@ -152,7 +152,13 @@ Every single code change, refactoring step, or feature implementation **must foc
 
 ## 7. DEX->Smali Baksmali Parity (In Progress)
 
-The native DEX->Smali disassembler (`src/formats/dex/format_dex_smali.c`) is being aligned to produce output byte-identical to the official baksmali.jar tool. Current status: **23/113 classes identical**.
+The native DEX->Smali disassembler is split into 4 focused files under `src/formats/dex/`:
+- `format_dex_smali_util.c` — shared utilities (aflags, sb, res, mproto, reg_name, uleb)
+- `format_dex_smali_annot.c` — annotation parsing with recursive encoded_value
+- `format_dex_smali_method.c` — method disassembly with dual label support
+- `format_dex_smali.c` — class-level orchestrator (thin, ~110 LOC)
+
+Current baksmali parity: **28/113 classes identical** (up from initial 5).
 
 ### Completed
 - Section comments (`# static fields`, `# instance fields`, `# direct methods`, `# virtual methods`, `# interfaces`)
@@ -160,21 +166,21 @@ The native DEX->Smali disassembler (`src/formats/dex/format_dex_smali.c`) is bei
 - Parameter register naming: `p0-N` for params, `v0-N` for locals (params at END of register range)
 - Rotating static buffer for multi-register instructions (prevents overwrite)
 - `0x%x` format for integer literals
-- Offset-based branch labels (`:cond_xx`, `:goto_xx`)
+- Offset-based branch labels (`:cond_xx`, `:goto_xx`) with dual label support
 - Blank lines between instructions (suppressed before `.end method`)
 - Class-level annotation parsing (`@TargetApi`, `@Retention`, `@Override`)
+- Recursive `encoded_value` parsing for array annotations (`.enum` elements in `@Target`)
 - `.enum` prefix for enum-typed annotation values
 - `# interfaces` section with proper uint16 type_list parsing
-- `annotations_off` parsed from class_def_item (offset 20 in class_def_item)
+- `annotations_off` parsed from class_def_item (offset 20)
+- Blank lines between fields
+- Correct section spacing (2 blank lines between sections)
 
 ### Remaining (for full byte-identical output)
-1. **Static field initializers** - parse `static_values_off` (offset 28 in class_def_item) and `encoded_array_item` to output `= 0x...` for static final fields
-2. **Annotation element indent** - class-level annotations need `.annotation` at col 0, elements at col 4, `.end annotation` at col 0
-3. **Blank lines between fields** - baksmali separates consecutive field entries with blank lines
-4. **Duplicate labels** - when multiple branch instructions target the same offset, baksmali emits both `:cond_N` and `:goto_N` labels
-5. **Array annotation values** - `write_encoded_annotation` needs recursive encoded_value parsing for array elements (currently outputs empty `{ }` for non-empty arrays)
-6. **Method-level annotations** - need 4-space indent context (currently class-level only)
-7. **Parameter annotations** - `params_sz` in `annotations_directory_item` is ignored
+1. **Static field initializers** — parse `static_values_off` (offset 28 in class_def_item) and `encoded_array_item` to output `= 0x...` for static final fields (R classes)
+2. **Method-level annotations** — need 4-space indent context (currently class-level only)
+3. **Parameter annotations** — `params_sz` in `annotations_directory_item` is ignored
+4. **Annotation spacing** — blank line between consecutive class-level annotations
 
 ### Reference
 - Test APK: `apk/Current Activity_1.5.5_APKPure.apk` (113 classes)
