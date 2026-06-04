@@ -85,4 +85,27 @@ typedef struct {
 // ULEB128 reader used by multiple format_dex_* modules.
 int dex_read_uleb128(const uint8_t *data, uint32_t *val);
 
+// String builder (used by smali output modules)
+typedef struct { char **b; size_t *l, *c; } smali_sb;
+int smali_sa(smali_sb *s, const char *str);
+int smali_sf(smali_sb *s, const char *fmt, ...);
+
+// Smali utilities shared across modules
+const char *smali_aflags(uint32_t f);
+char *smali_tsm(const char *d);
+const char *smali_res(dex_ctx *ctx, int k, uint32_t i);
+void smali_mproto(dex_ctx *ctx, uint32_t mi, char *b, size_t z);
+const char *smali_reg_name(uint32_t r, uint32_t regs, uint32_t ins_size);
+int smali_uleb(const uint8_t *data, uint32_t *val, const uint8_t **next);
+
+// Smali annotation output
+void smali_write_annotations(smali_sb *s, dex_ctx *ctx, dex_class *c,
+                              int target_type, uint32_t target_idx);
+int smali_write_method_annot(smali_sb *s, dex_ctx *ctx, dex_class *c,
+                              uint32_t method_idx);
+
+// Smali method disassembly
+int smali_dm(smali_sb *s, dex_ctx *ctx, dex_method_enc *me);
+int smali_dm_abstract(smali_sb *s, dex_ctx *ctx, dex_method_enc *me);
+
 #endif
