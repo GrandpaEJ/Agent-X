@@ -148,3 +148,37 @@ Every single code change, refactoring step, or feature implementation **must foc
   * **Patch (x.y.Z)**: Backward-compatible bug fixes or documentation updates.
 * **Release Tags**: Every commit that updates the version inside the changelog must be tagged in git (e.g. `git tag v1.2.1`).
 
+---
+
+## 7. DEX->Smali Baksmali Parity (In Progress)
+
+The native DEX->Smali disassembler (`src/formats/dex/format_dex_smali.c`) is being aligned to produce output byte-identical to the official baksmali.jar tool. Current status: **23/113 classes identical**.
+
+### Completed
+- Section comments (`# static fields`, `# instance fields`, `# direct methods`, `# virtual methods`, `# interfaces`)
+- `constructor` keyword for `<clinit>`/`<init>` methods
+- Parameter register naming: `p0-N` for params, `v0-N` for locals (params at END of register range)
+- Rotating static buffer for multi-register instructions (prevents overwrite)
+- `0x%x` format for integer literals
+- Offset-based branch labels (`:cond_xx`, `:goto_xx`)
+- Blank lines between instructions (suppressed before `.end method`)
+- Class-level annotation parsing (`@TargetApi`, `@Retention`, `@Override`)
+- `.enum` prefix for enum-typed annotation values
+- `# interfaces` section with proper uint16 type_list parsing
+- `annotations_off` parsed from class_def_item (offset 20 in class_def_item)
+
+### Remaining (for full byte-identical output)
+1. **Static field initializers** - parse `static_values_off` (offset 28 in class_def_item) and `encoded_array_item` to output `= 0x...` for static final fields
+2. **Annotation element indent** - class-level annotations need `.annotation` at col 0, elements at col 4, `.end annotation` at col 0
+3. **Blank lines between fields** - baksmali separates consecutive field entries with blank lines
+4. **Duplicate labels** - when multiple branch instructions target the same offset, baksmali emits both `:cond_N` and `:goto_N` labels
+5. **Array annotation values** - `write_encoded_annotation` needs recursive encoded_value parsing for array elements (currently outputs empty `{ }` for non-empty arrays)
+6. **Method-level annotations** - need 4-space indent context (currently class-level only)
+7. **Parameter annotations** - `params_sz` in `annotations_directory_item` is ignored
+
+### Reference
+- Test APK: `apk/Current Activity_1.5.5_APKPure.apk` (113 classes)
+- Compare: `diff -rq /tmp/native_smali /tmp/baksmali_smali`
+- Official baksmali: `java -jar apk/baksmali.jar d apk/classes.dex -o /tmp/baksmali_smali`
+- Native: `./agent-x tool read_dex path=apk/classes.dex out_dir=/tmp/native_smali`
+
