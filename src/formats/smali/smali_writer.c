@@ -726,18 +726,54 @@ int write_assembled_dex(smali_ctx_def_t *ctx, const char *out_dex) {
             for (int32_t j = 0; j <= last_init_idx; j++) {
                 if (c->static_fields[j].has_init_value) {
                     int32_t val = c->static_fields[j].init_value;
-                    int size = 4;
-                    if (val >= -128 && val <= 127) size = 1;
-                    else if (val >= -32768 && val <= 32767) size = 2;
-                    else if (val >= -8388608 && val <= 8388607) size = 3;
-                    
-                    buf_write_u8(&b, ((size - 1) << 5) | 0x04);
-                    for (int k = 0; k < size; k++) {
-                        buf_write_u8(&b, (val >> (k * 8)) & 0xFF);
+                    char t = c->static_fields[j].type[0];
+                    if (t == 'Z') {
+                        buf_write_u8(&b, (val ? 1 : 0) << 5 | 0x1F); // VALUE_BOOLEAN
+                    } else {
+                        int size = 4;
+                        if (val >= -128 && val <= 127) size = 1;
+                        else if (val >= -32768 && val <= 32767) size = 2;
+                        else if (val >= -8388608 && val <= 8388607) size = 3;
+                        
+                        uint8_t type_tag = 0x04; // VALUE_INT
+                        if (t == 'B') type_tag = 0x00;
+                        else if (t == 'S') type_tag = 0x02;
+                        else if (t == 'C') type_tag = 0x03;
+                        else if (t == 'J') type_tag = 0x06;
+                        else if (t == 'F') type_tag = 0x10;
+                        else if (t == 'D') type_tag = 0x11;
+                        if (t == 'L' || t == '[') type_tag = 0x1E; // Fallback to NULL for objects
+
+                        if (type_tag == 0x1E) {
+                            buf_write_u8(&b, 0x1E);
+                        } else {
+                            buf_write_u8(&b, ((size - 1) << 5) | type_tag);
+                            for (int k = 0; k < size; k++) {
+                                buf_write_u8(&b, (val >> (k * 8)) & 0xFF);
+                            }
+                        }
                     }
                 } else {
-                    buf_write_u8(&b, 0x04); // 1-byte int type
-                    buf_write_u8(&b, 0x00);
+                    char t = c->static_fields[j].type[0];
+                    if (t == 'L' || t == '[') {
+                        buf_write_u8(&b, 0x1E); // VALUE_NULL
+                    } else if (t == 'Z') {
+                        buf_write_u8(&b, 0x1F); // VALUE_BOOLEAN (false)
+                    } else if (t == 'J') {
+                        buf_write_u8(&b, 0x06); buf_write_u8(&b, 0x00); // VALUE_LONG
+                    } else if (t == 'F') {
+                        buf_write_u8(&b, 0x10); buf_write_u8(&b, 0x00); // VALUE_FLOAT
+                    } else if (t == 'D') {
+                        buf_write_u8(&b, 0x11); buf_write_u8(&b, 0x00); // VALUE_DOUBLE
+                    } else if (t == 'B') {
+                        buf_write_u8(&b, 0x00); buf_write_u8(&b, 0x00); // VALUE_BYTE
+                    } else if (t == 'C') {
+                        buf_write_u8(&b, 0x03); buf_write_u8(&b, 0x00); // VALUE_CHAR
+                    } else if (t == 'S') {
+                        buf_write_u8(&b, 0x02); buf_write_u8(&b, 0x00); // VALUE_SHORT
+                    } else {
+                        buf_write_u8(&b, 0x04); buf_write_u8(&b, 0x00); // VALUE_INT
+                    }
                 }
             }
         } else {

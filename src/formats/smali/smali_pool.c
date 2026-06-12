@@ -317,7 +317,6 @@ void smali_pool_build_all(smali_ctx_def_t *ctx) {
                 for (uint32_t k = 0; k < m->insns_count; k++) {
                     smali_insn_t *ins = &m->insns[k];
                     if (ins->ref_str) {
-                        smali_pool_add(&ctx->strings, ins->ref_str);
                         char *arrow = strstr(ins->ref_str, "->");
                         if (arrow) {
                             char *colon = strchr(ins->ref_str, ':');
@@ -338,6 +337,8 @@ void smali_pool_build_all(smali_ctx_def_t *ctx) {
                                 free(name_part);
                             }
                             free(class_part);
+                        } else {
+                            smali_pool_add(&ctx->strings, ins->ref_str);
                         }
                     }
                 }
@@ -428,6 +429,9 @@ void smali_pool_build_all(smali_ctx_def_t *ctx) {
             }
         }
     }
+
+    smali_pool_sort_strings(&ctx->strings);
+    smali_pool_sort_strings(&ctx->types);
 
     s_sort_ctx = ctx;
     qsort(ctx->protos.strings, ctx->protos.count, sizeof(char *), comp_proto_sig);
