@@ -1,4 +1,6 @@
 #include "format_dex_internal.h"
+#include <math.h>
+#include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 
@@ -8,6 +10,47 @@ extern int dex_decode_insn(const uint16_t *insns, int offset,
 extern const char *dex_insn_name(uint8_t op);
 extern int dex_insn_kind(uint8_t op);
 extern int dex_insn_fmt(uint8_t op);
+
+static void emit_access_comment(smali_sb *s, dex_ctx *ctx, uint32_t method_idx) {
+    if (method_idx >= ctx->method_count) return;
+    dex_method_id *mi = &ctx->methods[method_idx];
+    const char *mname = (mi->name_idx < (uint32_t)ctx->sp.count)
+                        ? ctx->sp.strings[mi->name_idx] : NULL;
+    if (!mname) return;
+    if (strncmp(mname, "access$", 7) != 0) return;
+    int is_getter = (mname[7] == 'L');
+    int is_invokes = (mname[7] != 'L' && mname[7] != 'S');
+    for (uint32_t ci = 0; ci < ctx->class_count; ci++) {
+        dex_class *cls = &ctx->classes[ci];
+        for (int di = 0; di < cls->direct_count; di++) {
+            if (cls->direct[di].method_idx == method_idx) {
+                uint32_t code_off = cls->direct[di].code_off;
+                if (code_off == 0) return;
+                if (code_off + 16 > ctx->size) return;
+                const uint8_t *raw = ctx->data + code_off;
+                if (code_off + 16 + (raw[12] | (raw[13]<<8) | (raw[14]<<16) | (raw[15]<<24)) * 2 > ctx->size) return;
+                uint32_t isz = (uint32_t)raw[12] | ((uint32_t)raw[13]<<8) | ((uint32_t)raw[14]<<16) | ((uint32_t)raw[15]<<24);
+                const uint16_t *insns2 = (const uint16_t *)(raw + 16);
+                for (int ii = 0; (uint32_t)ii < isz; ) {
+                    uint32_t op2, vA2, vB2, vC2, rf2; int32_t lt2;
+                    int w2 = dex_decode_insn(insns2, ii, &op2, &vA2, &vB2, &vC2, &rf2, &lt2);
+                    if (w2 <= 0) { ii++; continue; }
+                    int kind2 = dex_insn_kind((uint8_t)op2);
+                    if (kind2 == 3 || kind2 == 4) {
+                        const char *target = smali_res(ctx, kind2, rf2);
+                        if (target) {
+                            if (is_getter) smali_sf(s, "    # getter for: %s\n", target);
+                            else if (is_invokes) smali_sf(s, "    # invokes: %s\n", target);
+                        }
+                        return;
+                    }
+                    ii += w2;
+                }
+                return;
+            }
+        }
+    }
+}
 
 #define NL 256
 #define MAX_TRIES 64
@@ -28,9 +71,9 @@ typedef struct {
     int line;
 } line_entry_t;
 
-static void emit_labels_at(smali_sb *s, uint32_t i, const uint32_t *lo,
-                           const uint8_t *lkinds, int lc, try_block_t *blocks,
-                           int block_count) {
+static int emit_labels_at(smali_sb *s, uint32_t i, const uint32_t *lo,
+                            const uint8_t *lkinds, int lc, try_block_t *blocks,
+                            int block_count, dex_ctx *ctx) {
     /* emit branch target labels */
     for (int li = 0; li < lc; li++) {
         if (lo[li] == i) {
@@ -38,15 +81,46 @@ static void emit_labels_at(smali_sb *s, uint32_t i, const uint32_t *lo,
                 smali_sf(s, "    :cond_%x\n", i);
             if (lkinds[li] & 2)
                 smali_sf(s, "    :goto_%x\n", i);
+            if (lkinds[li] & 4)
+                if (!(lkinds[li] & 64))
+                    smali_sf(s, "    :catch_%x\n", i);
+            if (lkinds[li] & 64)
+                smali_sf(s, "    :catchall_%x\n", i);
+            if (lkinds[li] & 8)
+                smali_sf(s, "    :pswitch_%x\n", i);
+            if (lkinds[li] & 16)
+                smali_sf(s, "    :sswitch_%x\n", i);
+            if (lkinds[li] & 32)
+                smali_sf(s, "    :try_start_%x\n", i);
         }
     }
-    /* emit try_end labels */
+    return 0;
+}
+
+static int emit_try_end_at(smali_sb *s, uint32_t i, try_block_t *blocks,
+                            int block_count, dex_ctx *ctx) {
+    int had_catch = 0;
     for (int bi = 0; bi < block_count; bi++) {
         uint32_t end_off = blocks[bi].start_addr + blocks[bi].insn_count;
         if (end_off == i) {
             smali_sf(s, "    :try_end_%x\n", i);
+            had_catch = 1;
+            for (uint32_t ci = 0; ci < blocks[bi].catch_type_count; ci++) {
+                if (blocks[bi].catch_types[ci] < (uint32_t)ctx->type_count) {
+                    const char *etype = ctx->sp.strings[ctx->type_ids[blocks[bi].catch_types[ci]]];
+                    char *et = smali_tsm(etype);
+                    smali_sf(s, "    .catch %s {:try_start_%x .. :try_end_%x} :catch_%x\n",
+                        et ? et : etype, blocks[bi].start_addr, end_off, blocks[bi].catch_addrs[ci]);
+                    free(et);
+                }
+            }
+            if (blocks[bi].catch_all_addr != 0xFFFFFFFF) {
+                smali_sf(s, "    .catchall {:try_start_%x .. :try_end_%x} :catchall_%x\n",
+                    blocks[bi].start_addr, end_off, blocks[bi].catch_all_addr);
+            }
         }
     }
+    return had_catch;
 }
 
 int smali_dm(smali_sb *s, dex_ctx *ctx, dex_method_enc *me) {
@@ -75,17 +149,10 @@ int smali_dm(smali_sb *s, dex_ctx *ctx, dex_method_enc *me) {
 
     /* method signature */
     const char *aflg = smali_aflags(fl);
-    if (strcmp(mn, "<clinit>") == 0 || strcmp(mn, "<init>") == 0) {
-        if (aflg[0])
-            smali_sf(s, ".method %s constructor %s%s\n", aflg, mn, protobuf);
-        else
-            smali_sf(s, ".method constructor %s%s\n", mn, protobuf);
-    } else {
-        if (aflg[0])
-            smali_sf(s, ".method %s %s%s\n", aflg, mn, protobuf);
-        else
-            smali_sf(s, ".method %s%s\n", mn, protobuf);
-    }
+    if (aflg[0])
+        smali_sf(s, ".method %s %s%s\n", aflg, mn, protobuf);
+    else
+        smali_sf(s, ".method %s%s\n", mn, protobuf);
     smali_sf(s, "    .registers %u\n", (unsigned)regs);
 
     /* find class for annotation lookup */
@@ -242,6 +309,9 @@ int smali_dm(smali_sb *s, dex_ctx *ctx, dex_method_enc *me) {
 
     /* pass 1: collect branch targets and payload offsets */
     uint32_t lo[NL]; int lc = 0;
+    uint8_t lkinds[NL];
+    for (int li = 0; li < NL; li++) lkinds[li] = 0;
+    /* also collect payload targets from packed/sparse-switch/fill-array-data */
     for (int i2 = 0; (uint32_t)i2 < isz; ) {
         uint32_t op, vA, vB, vC, rf; int32_t lt_val;
         int w = dex_decode_insn(insns, i2, &op, &vA, &vB, &vC, &rf, &lt_val);
@@ -259,6 +329,39 @@ int smali_dm(smali_sb *s, dex_ctx *ctx, dex_method_enc *me) {
                 if (!dup) lo[lc++] = (uint32_t)t;
             }
         }
+        /* collect switch payload targets */
+        if (fm == 18 && rf > 0) {
+            uint32_t toff = (uint32_t)i2 + (uint32_t)rf;
+            if (toff + 2 < isz) {
+                const uint16_t *payload = insns + toff;
+                uint16_t ident = payload[0];
+                if (ident == 0x0100) {
+                    uint16_t psize = payload[1];
+                    for (int si = 0; si < (int)psize; si++) {
+                        int32_t ptarget = (int32_t)(payload[4 + si*2] | (payload[5 + si*2] << 16));
+                        uint32_t abs_t = (uint32_t)((int32_t)i2 + ptarget);
+                        if (lc < NL) {
+                            int dup3 = 0;
+                            for (int di = 0; di < lc; di++)
+                                if (lo[di] == abs_t) { lkinds[di] |= 8; dup3 = 1; break; }
+                            if (!dup3) { lo[lc] = abs_t; lkinds[lc] = 8; lc++; }
+                         }
+                     }
+} else if (ident == 0x0200) {
+                     uint16_t psize = payload[1];
+                     for (int si = 0; si < (int)psize; si++) {
+                         int32_t ptarget = (int32_t)(payload[2 + (int)psize*2 + si*2] | (payload[3 + (int)psize*2 + si*2] << 16));
+                         uint32_t abs_t = (uint32_t)((int32_t)i2 + ptarget);
+                         if (lc < NL) {
+                             int dup3 = 0;
+                             for (int di = 0; di < lc; di++)
+                                 if (lo[di] == abs_t) { lkinds[di] |= 16; dup3 = 1; break; }
+                             if (!dup3) { lo[lc] = abs_t; lkinds[lc] = 16; lc++; }
+                         }
+                     }
+                 }
+            }
+        }
         /* also add try handler targets */
         for (int bi2 = 0; bi2 < block_count; bi2++) {
             uint32_t end_off = blocks[bi2].start_addr + blocks[bi2].insn_count;
@@ -266,14 +369,14 @@ int smali_dm(smali_sb *s, dex_ctx *ctx, dex_method_enc *me) {
                 uint32_t h = blocks[bi2].catch_addrs[ci];
                 int dup2 = 0;
                 for (int di = 0; di < lc; di++)
-                    if (lo[di] == h) { dup2 = 1; break; }
-                if (!dup2 && lc < NL) lo[lc++] = h;
+                    if (lo[di] == h) { lkinds[di] |= 4; dup2 = 1; break; }
+                if (!dup2 && lc < NL) { lo[lc] = h; lkinds[lc] = 4; lc++; }
             }
             if (blocks[bi2].catch_all_addr != 0xFFFFFFFF && blocks[bi2].catch_all_addr < isz) {
                 int dup2 = 0;
                 for (int di = 0; di < lc; di++)
-                    if (lo[di] == blocks[bi2].catch_all_addr) { dup2 = 1; break; }
-                if (!dup2 && lc < NL) lo[lc++] = blocks[bi2].catch_all_addr;
+                    if (lo[di] == blocks[bi2].catch_all_addr) { lkinds[di] |= 64; dup2 = 1; break; }
+                if (!dup2 && lc < NL) { lo[lc] = blocks[bi2].catch_all_addr; lkinds[lc] = 64; lc++; }
             }
             /* end_off for try_end label */
             if (end_off < isz) {
@@ -287,8 +390,7 @@ int smali_dm(smali_sb *s, dex_ctx *ctx, dex_method_enc *me) {
     }
 
     /* pass 2: determine label kinds */
-    uint8_t lkinds[NL];
-    for (int li = 0; li < lc; li++) lkinds[li] = 0;
+    for (int li = 0; li < lc; li++) lkinds[li] &= ~3;
     for (int bi = 0; (uint32_t)bi < isz; ) {
         uint32_t bop, bvA, bvB, bvC, brf; int32_t blt;
         int bw = dex_decode_insn(insns, bi, &bop, &bvA, &bvB, &bvC, &brf, &blt);
@@ -312,149 +414,104 @@ int smali_dm(smali_sb *s, dex_ctx *ctx, dex_method_enc *me) {
         bi += bw;
     }
 
-    /* mark handler labels as goto targets */
+    /* mark handler labels as catch targets */
     for (int bi2 = 0; bi2 < block_count; bi2++) {
         for (uint32_t ci = 0; ci < blocks[bi2].catch_type_count; ci++) {
             for (int li = 0; li < lc; li++) {
                 if (lo[li] == blocks[bi2].catch_addrs[ci])
-                    lkinds[li] |= 2;
+                    lkinds[li] |= 4;
             }
         }
         if (blocks[bi2].catch_all_addr != 0xFFFFFFFF) {
             for (int li = 0; li < lc; li++) {
                 if (lo[li] == blocks[bi2].catch_all_addr)
-                    lkinds[li] |= 2;
+                    lkinds[li] |= 4;
             }
         }
-    }
-
-    /* emit try/catch directives before the body */
-    if (block_count > 0) {
-        smali_sa(s, "\n");
-        for (int bi2 = 0; bi2 < block_count; bi2++) {
-            try_block_t *tb = &blocks[bi2];
-            uint32_t so = tb->start_addr;
-            uint32_t eo = so + tb->insn_count;
-            smali_sf(s, "    :try_start_%x\n", so);
-            for (uint32_t ci = 0; ci < tb->catch_type_count; ci++) {
-                if (tb->catch_types[ci] < (uint32_t)ctx->type_count) {
-                    const char *etype = ctx->sp.strings[ctx->type_ids[tb->catch_types[ci]]];
-                    char *et = smali_tsm(etype);
-                    smali_sf(s, "    .catch %s {:try_start_%x .. :try_end_%x} :goto_%x\n",
-                        et ? et : etype, so, eo, tb->catch_addrs[ci]);
-                    free(et);
-                }
+        /* also add try_start labels */
+        if (blocks[bi2].start_addr < isz) {
+            int dup2 = 0;
+            for (int li = 0; li < lc; li++) {
+                if (lo[li] == blocks[bi2].start_addr) { lkinds[li] |= 32; dup2 = 1; break; }
             }
-            if (tb->catch_all_addr != 0xFFFFFFFF) {
-                smali_sf(s, "    .catchall {:try_start_%x .. :try_end_%x} :goto_%x\n",
-                    so, eo, tb->catch_all_addr);
-            }
+            if (!dup2 && lc < NL) { lo[lc] = blocks[bi2].start_addr; lkinds[lc] = 32; lc++; }
         }
     }
 
     smali_sa(s, "\n");
 
-    /* emit .prologue after the last param-related .line or at start */
     if (has_prologue)
         smali_sa(s, "    .prologue\n");
 
-    /* pass 3: emit instructions with labels, payloads, and line numbers */
-    for (int i = 0; (uint32_t)i < isz; ) {
-        uint32_t op, vA, vB, vC, rf; int32_t lt_val;
-        int w = dex_decode_insn(insns, i, &op, &vA, &vB, &vC, &rf, &lt_val);
-        if (w <= 0) { i += 1; continue; }
-        const char *nm = dex_insn_name((uint8_t)op);
-        if (!nm) { i += w; continue; }
-        int k = dex_insn_kind((uint8_t)op), fm = dex_insn_fmt((uint8_t)op);
-
-        /* emit .line before instruction if we have debug info */
-        for (int li2 = 0; li2 < line_count; li2++) {
-            if (lines[li2].addr == (uint32_t)i) {
-                smali_sf(s, "    .line %d\n", lines[li2].line);
+    /* Collect payload offsets for packed-switch, sparse-switch, fill-array-data */
+    #define MAX_PAYLOADS 32
+    uint32_t payload_offs[MAX_PAYLOADS];
+    uint32_t payload_srcs[MAX_PAYLOADS];
+    int payload_count = 0;
+    for (int i2 = 0; (uint32_t)i2 < isz; ) {
+        uint32_t op2, vA2, vB2, vC2, rf2; int32_t lt2;
+        int w2 = dex_decode_insn(insns, i2, &op2, &vA2, &vB2, &vC2, &rf2, &lt2);
+        if (w2 <= 0) { i2 += 1; continue; }
+        int fm2 = dex_insn_fmt((uint8_t)op2);
+        if (fm2 == 18) {
+            uint32_t toff = (uint32_t)i2 + (uint32_t)rf2;
+            if (toff + 4 <= isz && rf2 > 0 && payload_count < MAX_PAYLOADS) {
+                payload_offs[payload_count] = toff;
+                payload_srcs[payload_count] = i2;
+                payload_count++;
             }
         }
+        i2 += w2;
+    }
 
-        /* emit labels at this offset */
-        emit_labels_at(s, (uint32_t)i, lo, lkinds, lc, blocks, block_count);
-
-        /* Check for payloads (packed-switch, sparse-switch, fill-array-data) */
-        if (fm == 18) {
-            uint32_t target_offset = (uint32_t)i + (uint32_t)rf;
-            if (target_offset + 4 <= isz && rf > 0) {
-                const uint16_t *payload = insns + target_offset;
+    /* pass 3: emit instructions with labels, payloads, and line numbers */
+    for (int i = 0; (uint32_t)i < isz; ) {
+        /* check if current offset is a payload */
+        int is_payload = 0;
+        for (int pi = 0; pi < payload_count; pi++) {
+            if (payload_offs[pi] == (uint32_t)i) {
+                is_payload = 1;
+                const uint16_t *payload = insns + i;
                 uint16_t ident = payload[0];
-
-                smali_sa(s, "    "); smali_sa(s, nm);
-                #define RN(r) smali_reg_name(r, (uint32_t)regs, (uint32_t)ins)
-                smali_sf(s, " %s, :pswitch_data_%x\n", RN(vA), target_offset);
-
                 if (ident == 0x0100) {
-                    /* packed-switch payload */
                     uint16_t size = payload[1];
                     int32_t first_key = (int32_t)(payload[2] | (payload[3] << 16));
-                    smali_sf(s, "    :pswitch_data_%x\n", target_offset);
-                    smali_sf(s, "    .packed-switch %d\n", first_key);
+                    smali_sf(s, "    :pswitch_data_%x\n", i);
+                    smali_sf(s, "    .packed-switch 0x%x\n", (uint32_t)first_key);
+                    int switch_off = (int)payload_srcs[pi];
                     for (int si = 0; si < (int)size; si++) {
                         int32_t ptarget = (int32_t)(payload[4 + si*2] | (payload[5 + si*2] << 16));
-                        int abs_target = (int32_t)target_offset + ptarget;
+                        int abs_target = switch_off + ptarget;
                         smali_sf(s, "        :pswitch_%x\n", (uint32_t)abs_target);
-                        /* add target to labels */
-                        if (lc < NL) {
-                            int dup3 = 0;
-                            for (int di = 0; di < lc; di++)
-                                if (lo[di] == (uint32_t)abs_target) { dup3 = 1; break; }
-                            if (!dup3) {
-                                lo[lc] = (uint32_t)abs_target;
-                                lkinds[lc] = 2;
-                                lc++;
-                            }
-                        }
                     }
                     smali_sa(s, "    .end packed-switch\n");
-
-                    /* Skip past the payload in instruction stream */
-                    uint32_t payload_words = 4 + (uint32_t)size * 2;
-                    while ((uint32_t)i < target_offset + payload_words) i += 1;
-                    i -= w;
-                    if ((int)i < 0) i = 0;
+                    uint32_t pw = 4 + (uint32_t)size * 2;
+                    for (uint32_t ppi = 0; ppi < pw; ppi++) {
+                        i += 1;
+                    }
+                    goto next_insn;
                 } else if (ident == 0x0200) {
-                    /* sparse-switch payload */
                     uint16_t size = payload[1];
-                    smali_sf(s, "    :pswitch_data_%x\n", target_offset);
+                    smali_sf(s, "    :sswitch_data_%x\n", i);
                     smali_sa(s, "    .sparse-switch\n");
+                    int switch_off = (int)payload_srcs[pi];
                     for (int si = 0; si < (int)size; si++) {
                         int32_t key = (int32_t)(payload[2 + si*2] | (payload[3 + si*2] << 16));
                         int32_t ptarget = (int32_t)(payload[2 + (int)size*2 + si*2] | (payload[3 + (int)size*2 + si*2] << 16));
-                        int abs_target = (int32_t)target_offset + ptarget;
-                        smali_sf(s, "        %d -> :sswitch_%x\n", key, (uint32_t)abs_target);
-                        if (lc < NL) {
-                            int dup3 = 0;
-                            for (int di = 0; di < lc; di++)
-                                if (lo[di] == (uint32_t)abs_target) { dup3 = 1; break; }
-                            if (!dup3) {
-                                lo[lc] = (uint32_t)abs_target;
-                                lkinds[lc] = 2;
-                                lc++;
-                            }
-                        }
+                        int abs_target = switch_off + ptarget;
+                        smali_sf(s, "        0x%x -> :sswitch_%x\n", (uint32_t)key, (uint32_t)abs_target);
                     }
                     smali_sa(s, "    .end sparse-switch\n");
-
-                    uint32_t payload_words = 2 + (uint32_t)size * 4;
-                    while ((uint32_t)i < target_offset + payload_words) i += 1;
-                    i -= w;
-                    if ((int)i < 0) i = 0;
+                    uint32_t pw = 2 + (uint32_t)size * 4;
+                    for (uint32_t ppi = 0; ppi < pw; ppi++) {
+                        i += 1;
+                    }
+                    goto next_insn;
                 } else if (ident == 0x0300) {
-                    /* fill-array-data payload */
                     uint16_t elem_width = payload[1];
                     uint32_t count = payload[2] | (payload[3] << 16);
-                    smali_sa(s, "    "); smali_sa(s, nm);
-                    #define RN(r) smali_reg_name(r, (uint32_t)regs, (uint32_t)ins)
-                    smali_sf(s, " %s, :array_%x\n", RN(vA), target_offset);
-
-                    smali_sf(s, "    :array_%x\n", target_offset);
+                    smali_sf(s, "    :array_%x\n", i);
                     smali_sf(s, "    .array-data %u\n", (unsigned)elem_width);
-
                     const uint8_t *array_data = (const uint8_t *)(payload + 4);
                     for (uint32_t ai = 0; ai < count; ai++) {
                         int32_t val = 0;
@@ -468,39 +525,82 @@ int smali_dm(smali_sb *s, dex_ctx *ctx, dex_method_enc *me) {
                             int64_t v64 = 0;
                             for (int ebi = 0; ebi < 8; ebi++)
                                 v64 |= (int64_t)array_data[ai*8+ebi] << (ebi*8);
-                            smali_sf(s, "        0x%llxL\n   ", (unsigned long long)v64);
+                            smali_sf(s, "        0x%llxL\n", (unsigned long long)v64);
                             continue;
                         }
                         smali_sf(s, "        0x%x\n", val);
                     }
                     smali_sa(s, "    .end array-data\n");
-
-                    uint32_t payload_size = 4 + count * elem_width;
-                    uint32_t payload_words2 = (payload_size + 1) / 2;
-                    while ((uint32_t)i < target_offset + payload_words2) i += 1;
-                    i -= w;
-                    if ((int)i < 0) i = 0;
+                    /* advance past the payload data (pad to 4-byte alignment, then 2 code units for header) */
+                    uint32_t data_bytes = count * elem_width;
+                    uint32_t pw = (4 + data_bytes + 1) / 2;
+                    for (uint32_t ppi = 0; ppi < pw; ppi++) {
+                        i += 1;
+                    }
+                    goto next_insn;
                 }
-                i += w;
-                continue;
             }
         }
 
+uint32_t op, vA, vB, vC, rf; int32_t lt_val;
+        int w = dex_decode_insn(insns, i, &op, &vA, &vB, &vC, &rf, &lt_val);
+        if (w <= 0) { i += 1; continue; }
+        const char *nm = dex_insn_name((uint8_t)op);
+        if (!nm) { i += w; continue; }
+        int k = dex_insn_kind((uint8_t)op), fm = dex_insn_fmt((uint8_t)op);
+
+        /* emit .line before instruction if we have debug info */
+        for (int li2 = 0; li2 < line_count; li2++) {
+            if (lines[li2].addr == (uint32_t)i) {
+                smali_sf(s, "    .line %d\n", lines[li2].line);
+            }
+        }
+
+        /* emit labels at this offset (branch targets and try_start only) */
+        emit_labels_at(s, (uint32_t)i, lo, lkinds, lc, blocks, block_count, ctx);
+
+        /* emit instruction text (payloads are handled above at their natural offsets) */
+        /* emit access bridge comment before invoke-static access$ calls */
+        if (op == 0x71 || op == 0x77) {
+            if (k == 4) emit_access_comment(s, ctx, rf);
+        }
         smali_sa(s, "    "); smali_sa(s, nm);
 
         #define RN(r) smali_reg_name(r, (uint32_t)regs, (uint32_t)ins)
         switch (fm) {
         case 0: break;
         case 1: case 21: smali_sf(s, " %s, %s", RN(vA), RN(vB)); break;
-        case 2: smali_sf(s, " %s, 0x%x", RN(vA), lt_val); break;
+        case 2: if (lt_val < 0) smali_sf(s, " %s, -0x%x", RN(vA), -lt_val);
+            else smali_sf(s, " %s, 0x%x", RN(vA), lt_val); break;
         case 3: smali_sf(s, " %s", RN(vA)); break;
         case 4: case 5: case 6: smali_sf(s, " :goto_%x", i+lt_val); break;
-        case 7: case 19:
+        case 7:
             if (k==1) smali_sf(s," %s, \"%s\"", RN(vA), smali_res(ctx,k,rf));
             else if (k>=2) { const char *r=smali_res(ctx,k,rf);
                 if (k==2){char*tt=smali_tsm(r);smali_sf(s," %s, %s",RN(vA),tt);free(tt);}
                 else smali_sf(s," %s, %s",RN(vA),r); }
             else smali_sf(s, " %s, 0x%x", RN(vA), rf);
+            break;
+case 19:
+            if (op == 0x19) {
+                uint64_t v64 = (uint64_t)rf << 48;
+                smali_sf(s, " %s, 0x%llxL", RN(vA), (unsigned long long)v64);
+            } else {
+                uint32_t v32 = (uint32_t)rf << 16;
+                smali_sf(s, " %s, 0x%x", RN(vA), v32);
+                if (op == 0x15 && v32 != 0 && v32 != 0x7fc00000u) {
+                    float fv; uint32_t fv32 = v32; memcpy(&fv, &fv32, 4);
+                    int fexp = (fv32 >> 23) & 0xFF;
+                    if (isfinite(fv) && !isnan(fv) && fexp > 0 && fexp < 254) {
+                        char fbuf[64];
+                        snprintf(fbuf, sizeof(fbuf), "%.8g", fv);
+                        if (!strchr(fbuf, '.') && !strchr(fbuf, 'e') && !strchr(fbuf, 'E'))
+                            smali_sf(s, "    # %s.0f", fbuf);
+                        else
+                            smali_sf(s, "    # %sf", fbuf);
+                    }
+                }
+            }
             break;
         case 8:
             if (k>=2) { const char *r=smali_res(ctx,k,rf);
@@ -516,10 +616,12 @@ int smali_dm(smali_sb *s, dex_ctx *ctx, dex_method_enc *me) {
             int br=(int32_t)(int16_t)rf;
             smali_sf(s," %s, %s, :cond_%x", RN(vA), RN(vB), i+br); break; }
         case 11: smali_sf(s," %s, 0x%x", RN(vA), (int16_t)rf); break;
-        case 20: smali_sf(s," %s, %s, 0x%x", RN(vA), RN(vB),(int16_t)rf); break;
+        case 20: { int16_t v22s = (int16_t)rf; if (v22s < 0) smali_sf(s," %s, %s, -0x%x", RN(vA), RN(vB), -(int32_t)v22s);
+                else smali_sf(s," %s, %s, 0x%x", RN(vA), RN(vB), (uint16_t)v22s); break; }
         case 24: smali_sf(s," %s, %s", RN(vA), RN(vB)); break;
         case 25: smali_sf(s," %s, %s", RN(vA), RN(vB)); break;
-        case 12: smali_sf(s," %s, %s, 0x%x", RN(vA), RN(vB), lt_val); break;
+        case 12: if (lt_val < 0) smali_sf(s," %s, %s, -0x%x", RN(vA), RN(vB), -lt_val);
+                else smali_sf(s," %s, %s, 0x%x", RN(vA), RN(vB), (uint32_t)lt_val); break;
         case 13: smali_sf(s," %s, %s, %s", RN(vA), RN(vB), RN(vC)); break;
         case 14: {
             const char *r=smali_res(ctx,k,rf); smali_sa(s," {");
@@ -533,19 +635,50 @@ int smali_dm(smali_sb *s, dex_ctx *ctx, dex_method_enc *me) {
         }
         case 15: smali_sf(s," {%s .. %s}, %s", RN(vC), RN(vC+vA-1),
                           smali_res(ctx,k,rf)); break;
-        case 16: smali_sf(s," %s, 0x%x", RN(vA), lt_val); break;
+        case 16: if ((int32_t)lt_val < 0) smali_sf(s," %s, -0x%x", RN(vA), -(int32_t)lt_val);
+            else {
+                smali_sf(s," %s, 0x%x", RN(vA), (uint32_t)lt_val);
+                if (op == 0x14 && (uint32_t)lt_val != 0) {
+                    float fv; uint32_t fv32 = (uint32_t)lt_val; memcpy(&fv, &fv32, 4);
+                    int fexp = (fv32 >> 23) & 0xFF;
+                    if (isfinite(fv) && !isnan(fv) && fexp > 0 && fexp < 254 && fv >= 1.0f && fv < 1e7f) {
+                        char fbuf[64];
+                        snprintf(fbuf, sizeof(fbuf), "%.8g", fv);
+                        smali_sf(s, "    # %sf", fbuf);
+                    }
+                }
+            }
+            break;
         case 17: {
             uint64_t v=0; for(int wi=0;wi<4;wi++)
                 v|=(uint64_t)insns[i+1+wi]<<(wi*16);
             smali_sf(s," %s, 0x%llx",RN(vA),(unsigned long long)v); break;
         }
-        case 18: smali_sf(s," %s, +%x", RN(vA), rf); break;
+        case 18: {
+            uint32_t toff = (uint32_t)i + rf;
+            if (op == 0x2c)
+                smali_sf(s, " %s, :sswitch_data_%x", RN(vA), toff);
+            else if (op == 0x2b)
+                smali_sf(s, " %s, :pswitch_data_%x", RN(vA), toff);
+            else
+                smali_sf(s, " %s, :array_%x", RN(vA), toff);
+            break;
+        }
         default: smali_sf(s," %s", RN(vA)); break;
         }
 
-        int is_last = ((uint32_t)(i + w) >= isz) ? 1 : 0;
-        smali_sa(s, is_last ? "\n" : "\n\n");
+int is_last = ((uint32_t)(i + w) >= isz) ? 1 : 0;
+        smali_sa(s, "\n");
+        /* emit try_end/catch at offsets within this instruction's range */
+        int had_catch = 0;
+        for (int off = i + 1; off <= i + w && (uint32_t)off <= isz; off++) {
+            int mc = emit_try_end_at(s, (uint32_t)off, blocks, block_count, ctx);
+            if (mc) had_catch = 1;
+        }
+        if (had_catch) smali_sa(s, "\n");
+        else if (!is_last) smali_sa(s, "\n");
         i += w;
+        next_insn:;
     }
     return smali_sa(s, ".end method\n");
-}
+}// Debug: temporarily add to trace
