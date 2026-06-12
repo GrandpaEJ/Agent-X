@@ -271,6 +271,62 @@ static void ensure_names_in_strings(smali_ctx_def_t *ctx) {
     }
 }
 
+static void smali_hash_encoded_value(smali_ctx_def_t *ctx, smali_encoded_value_t *val);
+
+static void smali_hash_annotation(smali_ctx_def_t *ctx, smali_annotation_t *annot) {
+    if (!annot) return;
+    smali_pool_add(&ctx->strings, annot->type);
+    for (uint32_t i = 0; i < annot->element_count; i++) {
+        smali_pool_add(&ctx->strings, annot->elements[i].name);
+        smali_hash_encoded_value(ctx, &annot->elements[i].value);
+    }
+}
+
+static void smali_hash_encoded_value(smali_ctx_def_t *ctx, smali_encoded_value_t *val) {
+    if (!val) return;
+    if (val->type == 0x17) {
+        smali_pool_add(&ctx->strings, val->v_string);
+    } else if (val->type == 0x18) {
+        smali_pool_add(&ctx->strings, val->v_string);
+    } else if (val->type == 0x19 || val->type == 0x1b) {
+        smali_pool_add(&ctx->fields, val->v_string);
+        char *arrow = strstr(val->v_string, "->");
+        char *colon = strchr(val->v_string, ':');
+        if (arrow && colon) {
+            char *cls = strndup(val->v_string, arrow - val->v_string);
+            char *name = strndup(arrow + 2, colon - arrow - 2);
+            char *type = strdup(colon + 1);
+            smali_pool_add(&ctx->strings, cls);
+            smali_pool_add(&ctx->strings, name);
+            smali_pool_add(&ctx->strings, type);
+            free(cls); free(name); free(type);
+        }
+    } else if (val->type == 0x1a) {
+        smali_pool_add(&ctx->methods, val->v_string);
+        char *arrow = strstr(val->v_string, "->");
+        char *paren = strchr(val->v_string, '(');
+        if (arrow && paren) {
+            char *cls = strndup(val->v_string, arrow - val->v_string);
+            char *name = strndup(arrow + 2, paren - arrow - 2);
+            smali_pool_add(&ctx->strings, cls);
+            smali_pool_add(&ctx->strings, name);
+            smali_pool_add(&ctx->strings, paren);
+            smali_pool_add(&ctx->protos, paren);
+            // Forward declarations not needed if they are above, wait, they are static above!
+            // Let's just remove the declarations since they are static and defined above.
+            add_sig_types(&ctx->strings, paren);
+            add_shorty_string(&ctx->strings, paren);
+            free(cls); free(name);
+        }
+    } else if (val->type == 0x1c) {
+        for (uint32_t i = 0; i < val->v_array.count; i++) {
+            smali_hash_encoded_value(ctx, &val->v_array.elements[i]);
+        }
+    } else if (val->type == 0x1d) {
+        smali_hash_annotation(ctx, val->v_annotation);
+    }
+}
+
 void smali_pool_build_all(smali_ctx_def_t *ctx) {
     smali_pool_init(&ctx->strings);
     smali_pool_init(&ctx->types);
@@ -293,19 +349,26 @@ void smali_pool_build_all(smali_ctx_def_t *ctx) {
         for (uint32_t j = 0; j < c->static_field_count; j++) {
             smali_pool_add(&ctx->strings, c->static_fields[j].name);
             smali_pool_add(&ctx->strings, c->static_fields[j].type);
-            if (c->static_fields[j].has_init_value) {
-                smali_field_def_t *f = &c->static_fields[j];
-                if (f->value_type == VALUE_TYPE_STRING && f->value_str)
-                    smali_pool_add(&ctx->strings, f->value_str);
-                else if (f->value_type == VALUE_TYPE_TYPE && f->value_str)
-                    smali_pool_add(&ctx->strings, f->value_str);
-                else if (f->value_type == VALUE_TYPE_ENUM && f->value_str)
-                    smali_pool_add(&ctx->strings, f->value_str);
+            if (c->static_fields[j].init_string) {
+                smali_pool_add(&ctx->strings, c->static_fields[j].init_string);
             }
         }
         for (uint32_t j = 0; j < c->instance_field_count; j++) {
             smali_pool_add(&ctx->strings, c->instance_fields[j].name);
             smali_pool_add(&ctx->strings, c->instance_fields[j].type);
+        }
+        for (uint32_t j = 0; j < c->annotation_count; j++) {
+            smali_hash_annotation(ctx, &c->annotations[j]);
+        }
+        for (uint32_t j = 0; j < c->static_field_count; j++) {
+            for (uint32_t k = 0; k < c->static_fields[j].annotation_count; k++) {
+                smali_hash_annotation(ctx, &c->static_fields[j].annotations[k]);
+            }
+        }
+        for (uint32_t j = 0; j < c->instance_field_count; j++) {
+            for (uint32_t k = 0; k < c->instance_fields[j].annotation_count; k++) {
+                smali_hash_annotation(ctx, &c->instance_fields[j].annotations[k]);
+            }
         }
         for (int mtype = 0; mtype < 2; mtype++) {
             uint32_t mc = (mtype == 0) ? c->direct_method_count : c->virtual_method_count;
@@ -346,8 +409,18 @@ void smali_pool_build_all(smali_ctx_def_t *ctx) {
                                 free(name_part);
                             }
                             free(class_part);
-                        } else {
-                            smali_pool_add(&ctx->strings, ins->ref_str);
+                        }
+                        smali_pool_add(&ctx->strings, ins->ref_str);
+                    }
+                }
+
+                for (uint32_t k = 0; k < m->annotation_count; k++) {
+                    smali_hash_annotation(ctx, &m->annotations[k]);
+                }
+                if (m->param_annotations) {
+                    for (uint32_t p_idx = 0; p_idx < m->param_annotation_cap; p_idx++) {
+                        for (uint32_t k = 0; k < m->param_annotation_counts[p_idx]; k++) {
+                            smali_hash_annotation(ctx, &m->param_annotations[p_idx][k]);
                         }
                     }
                 }
@@ -391,6 +464,37 @@ void smali_pool_build_all(smali_ctx_def_t *ctx) {
                             if (paren) {
                                 smali_pool_add(&ctx->protos, paren);
                             }
+                        }
+                    }
+                }
+            }
+        }
+        
+        for (uint32_t j = 0; j < c->annotation_count; j++) {
+            smali_hash_annotation(ctx, &c->annotations[j]);
+        }
+        for (uint32_t j = 0; j < c->static_field_count; j++) {
+            for (uint32_t k = 0; k < c->static_fields[j].annotation_count; k++) {
+                smali_hash_annotation(ctx, &c->static_fields[j].annotations[k]);
+            }
+        }
+        for (uint32_t j = 0; j < c->instance_field_count; j++) {
+            for (uint32_t k = 0; k < c->instance_fields[j].annotation_count; k++) {
+                smali_hash_annotation(ctx, &c->instance_fields[j].annotations[k]);
+            }
+        }
+        for (int mtype = 0; mtype < 2; mtype++) {
+            uint32_t mc = (mtype == 0) ? c->direct_method_count : c->virtual_method_count;
+            smali_method_def_t *m_arr = (mtype == 0) ? c->direct_methods : c->virtual_methods;
+            for (uint32_t j = 0; j < mc; j++) {
+                smali_method_def_t *m = &m_arr[j];
+                for (uint32_t k = 0; k < m->annotation_count; k++) {
+                    smali_hash_annotation(ctx, &m->annotations[k]);
+                }
+                if (m->param_annotations) {
+                    for (uint32_t p_idx = 0; p_idx < m->param_annotation_cap; p_idx++) {
+                        for (uint32_t k = 0; k < m->param_annotation_counts[p_idx]; k++) {
+                            smali_hash_annotation(ctx, &m->param_annotations[p_idx][k]);
                         }
                     }
                 }

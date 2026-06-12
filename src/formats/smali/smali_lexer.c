@@ -19,6 +19,29 @@ char *smali_parse_string_literal(char **p) {
             else if (*end == '"') { str[len++] = '"'; }
             else if (*end == '\\') { str[len++] = '\\'; }
             else if (*end == '\'') { str[len++] = '\''; }
+            else if (*end == 'u') {
+                char hex[5] = {0};
+                if (end[1] && end[2] && end[3] && end[4]) {
+                    hex[0] = end[1]; hex[1] = end[2]; hex[2] = end[3]; hex[3] = end[4];
+                    uint32_t codepoint = strtoul(hex, NULL, 16);
+                    if (codepoint < 0x80) {
+                        if (codepoint == 0) { // Modified UTF-8 encodes null as 2 bytes
+                            str[len++] = 0xC0;
+                            str[len++] = 0x80;
+                        } else {
+                            str[len++] = (char)codepoint;
+                        }
+                    } else if (codepoint < 0x800) {
+                        str[len++] = 0xC0 | (codepoint >> 6);
+                        str[len++] = 0x80 | (codepoint & 0x3F);
+                    } else {
+                        str[len++] = 0xE0 | (codepoint >> 12);
+                        str[len++] = 0x80 | ((codepoint >> 6) & 0x3F);
+                        str[len++] = 0x80 | (codepoint & 0x3F);
+                    }
+                    end += 4;
+                }
+            }
             else { str[len++] = *end; }
         } else {
             str[len++] = *end;
@@ -45,7 +68,9 @@ char *smali_next_token(char **p) {
         return NULL;
     }
     if (*start == '"') {
-        return smali_parse_string_literal(&start);
+        char *res = smali_parse_string_literal(&start);
+        *p = start;
+        return res;
     }
     if (*start == '{') {
         char *end = start;

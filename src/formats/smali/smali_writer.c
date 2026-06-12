@@ -146,6 +146,7 @@ static uint32_t write_debug_info(smali_ctx_def_t *ctx, smali_buf_t *b, smali_met
             case 0: case 1: case 21: case 2: case 3: case 4: cur_addr += 1; break;
             case 5: case 7: case 19: case 8: case 9: case 10: case 11: case 12: case 22: case 13: case 23: cur_addr += 2; break;
             case 6: case 14: case 15: case 16: case 18: case 24: case 25: cur_addr += 3; break;
+            case 26: cur_addr += 5; break;
             case 101: cur_addr += 4 + m->insns[i].payload_targets_count * 2; break;
             case 102: cur_addr += 2 + m->insns[i].payload_targets_count * 4; break;
             case 103: cur_addr += (m->insns[i].payload_data_len + 5) / 2 + 2; break;
@@ -245,7 +246,13 @@ static uint32_t write_code_item(smali_ctx_def_t *ctx, smali_buf_t *b, smali_meth
     align_4(b);
     uint32_t offset = b->len;
     
-    uint16_t *code_buf = malloc(m->insns_count * 3 * sizeof(uint16_t));
+    uint32_t max_words = m->insns_count * 5;
+    for (uint32_t i = 0; i < m->insns_count; i++) {
+        if (m->insns[i].fmt == 101) max_words += 4 + m->insns[i].payload_targets_count * 2;
+        if (m->insns[i].fmt == 102) max_words += 2 + m->insns[i].payload_targets_count * 4;
+        if (m->insns[i].fmt == 103) max_words += 4 + (m->insns[i].payload_data_len + 1) / 2;
+    }
+    uint16_t *code_buf = calloc(max_words, sizeof(uint16_t));
     uint32_t code_words = smali_encode_method_insns(ctx, m, code_buf);
 
     write_try_range_t ranges[64];
@@ -260,6 +267,7 @@ static uint32_t write_code_item(smali_ctx_def_t *ctx, smali_buf_t *b, smali_meth
                 case 0: case 1: case 21: case 2: case 3: case 4: cur_offset += 1; break;
                 case 5: case 7: case 19: case 8: case 9: case 10: case 11: case 12: case 22: case 13: case 23: cur_offset += 2; break;
                 case 6: case 14: case 15: case 16: case 18: case 24: case 25: cur_offset += 3; break;
+                case 26: cur_offset += 5; break;
                 case 101: cur_offset += 4 + m->insns[i].payload_targets_count * 2; break;
                 case 102: cur_offset += 2 + m->insns[i].payload_targets_count * 4; break;
                 case 103: cur_offset += 2 + (m->insns[i].payload_data_len + 1) / 2 + 2; break;
@@ -503,7 +511,100 @@ static int comp_class_methods(const void *a, const void *b) {
     return (idxA < idxB) ? -1 : 1;
 }
 
+static void write_encoded_value(smali_ctx_def_t *ctx, smali_buf_t *b, smali_encoded_value_t *val) {
+    if (!val) return;
+    if (val->type == 0x1d) { // Annotation
+        buf_write_u8(b, val->type);
+        buf_write_uleb128(b, smali_pool_find(&ctx->types, val->v_annotation->type));
+        buf_write_uleb128(b, val->v_annotation->element_count);
+        for (uint32_t i = 0; i < val->v_annotation->element_count; i++) {
+            buf_write_uleb128(b, smali_pool_find(&ctx->strings, val->v_annotation->elements[i].name));
+            write_encoded_value(ctx, b, &val->v_annotation->elements[i].value);
+        }
+    } else if (val->type == 0x1c) { // Array
+        buf_write_u8(b, val->type);
+        buf_write_uleb128(b, val->v_array.count);
+        for (uint32_t i = 0; i < val->v_array.count; i++) {
+            write_encoded_value(ctx, b, &val->v_array.elements[i]);
+        }
+    } else if (val->type == 0x17) { // String
+        uint32_t idx = smali_pool_find(&ctx->strings, val->v_string);
+        int size = 4;
+        if (idx <= 0xFF) size = 1; else if (idx <= 0xFFFF) size = 2; else if (idx <= 0xFFFFFF) size = 3;
+        buf_write_u8(b, ((size - 1) << 5) | 0x17);
+        for (int i = 0; i < size; i++) buf_write_u8(b, (idx >> (i * 8)) & 0xFF);
+    } else if (val->type == 0x18) { // Type
+        uint32_t idx = smali_pool_find(&ctx->types, val->v_string);
+        int size = 4;
+        if (idx <= 0xFF) size = 1; else if (idx <= 0xFFFF) size = 2; else if (idx <= 0xFFFFFF) size = 3;
+        buf_write_u8(b, ((size - 1) << 5) | 0x18);
+        for (int i = 0; i < size; i++) buf_write_u8(b, (idx >> (i * 8)) & 0xFF);
+    } else if (val->type == 0x19 || val->type == 0x1b) { // Field/Enum
+        uint32_t idx = smali_pool_find(&ctx->fields, val->v_string);
+        int size = 4;
+        if (idx <= 0xFF) size = 1; else if (idx <= 0xFFFF) size = 2; else if (idx <= 0xFFFFFF) size = 3;
+        buf_write_u8(b, ((size - 1) << 5) | val->type);
+        for (int i = 0; i < size; i++) buf_write_u8(b, (idx >> (i * 8)) & 0xFF);
+    } else if (val->type == 0x1a) { // Method
+        uint32_t idx = smali_pool_find(&ctx->methods, val->v_string);
+        int size = 4;
+        if (idx <= 0xFF) size = 1; else if (idx <= 0xFFFF) size = 2; else if (idx <= 0xFFFFFF) size = 3;
+        buf_write_u8(b, ((size - 1) << 5) | 0x1a);
+        for (int i = 0; i < size; i++) buf_write_u8(b, (idx >> (i * 8)) & 0xFF);
+    } else if (val->type == 0x1e) { // Null
+        buf_write_u8(b, 0x1e);
+    } else if (val->type == 0x1f) { // Boolean
+        buf_write_u8(b, (val->v_int ? 1 : 0) << 5 | 0x1f);
+    } else { // Primitives
+        int64_t v = (int64_t)val->v_int;
+        int size = 8;
+        if (v >= -128 && v <= 127) size = 1;
+        else if (v >= -32768 && v <= 32767) size = 2;
+        else if (v >= -8388608 && v <= 8388607) size = 3;
+        else if (v >= -2147483648LL && v <= 2147483647LL) size = 4;
+        else if (v >= -549755813888LL && v <= 549755813887LL) size = 5;
+        else if (v >= -140737488355328LL && v <= 140737488355327LL) size = 6;
+        else if (v >= -36028797018963968LL && v <= 36028797018963967LL) size = 7;
+        if (val->type == 0x00) size = 1;
+        else if (val->type == 0x02 || val->type == 0x03) { if (size > 2) size = 2; }
+        else if (val->type == 0x04 || val->type == 0x10) { if (size > 4) size = 4; }
+        buf_write_u8(b, ((size - 1) << 5) | val->type);
+        for (int i = 0; i < size; i++) buf_write_u8(b, (v >> (i * 8)) & 0xFF);
+    }
+}
+
+static uint32_t write_annotation_item(smali_ctx_def_t *ctx, smali_buf_t *b, smali_annotation_t *annot) {
+    uint32_t off = b->len;
+    buf_write_u8(b, annot->visibility);
+    buf_write_uleb128(b, smali_pool_find(&ctx->types, annot->type));
+    buf_write_uleb128(b, annot->element_count);
+    for (uint32_t i = 0; i < annot->element_count; i++) {
+        buf_write_uleb128(b, smali_pool_find(&ctx->strings, annot->elements[i].name));
+        write_encoded_value(ctx, b, &annot->elements[i].value);
+    }
+    return off;
+}
+
+static uint32_t write_annotation_set_item(smali_buf_t *b, uint32_t *item_offsets, uint32_t count) {
+    if (count == 0) return 0;
+    align_4(b);
+    uint32_t off = b->len;
+    buf_write_u32(b, count);
+    for (uint32_t i = 0; i < count; i++) buf_write_u32(b, item_offsets[i]);
+    return off;
+}
+
+static uint32_t write_annotation_set_ref_list(smali_buf_t *b, uint32_t *set_offsets, uint32_t count) {
+    if (count == 0) return 0;
+    align_4(b);
+    uint32_t off = b->len;
+    buf_write_u32(b, count);
+    for (uint32_t i = 0; i < count; i++) buf_write_u32(b, set_offsets[i]);
+    return off;
+}
+
 int write_assembled_dex(smali_ctx_def_t *ctx, const char *out_dex) {
+    printf("WRITE ASSEMBLED DEX START\\n"); fflush(stdout);
     // Sort all class fields and methods by their indexes in the pools first
     s_write_ctx = ctx;
     for (uint32_t i = 0; i < ctx->class_count; i++) {
@@ -556,9 +657,19 @@ int write_assembled_dex(smali_ctx_def_t *ctx, const char *out_dex) {
     for (uint32_t i = 0; i < string_count; i++) {
         string_offsets[i] = b.len;
         const char *str = ctx->strings.strings[i];
-        uint32_t len = strlen(str);
-        buf_write_uleb128(&b, len);
-        buf_write(&b, str, len + 1);
+        
+        uint32_t utf16_size = 0;
+        const unsigned char *p = (const unsigned char *)str;
+        while (*p) {
+            if (*p < 0x80) { utf16_size++; p++; }
+            else if ((*p & 0xE0) == 0xC0) { utf16_size++; p += 2; }
+            else if ((*p & 0xF0) == 0xE0) { utf16_size++; p += 3; }
+            else if ((*p & 0xF8) == 0xF0) { utf16_size += 2; p += 4; }
+            else { utf16_size++; p++; }
+        }
+        
+        buf_write_uleb128(&b, utf16_size);
+        buf_write(&b, str, strlen(str) + 1);
     }
     align_4(&b);
 
@@ -725,31 +836,51 @@ int write_assembled_dex(smali_ctx_def_t *ctx, const char *out_dex) {
             buf_write_uleb128(&b, last_init_idx + 1);
             for (int32_t j = 0; j <= last_init_idx; j++) {
                 if (c->static_fields[j].has_init_value) {
-                    int32_t val = c->static_fields[j].init_value;
-                    char t = c->static_fields[j].type[0];
-                    if (t == 'Z') {
-                        buf_write_u8(&b, (val ? 1 : 0) << 5 | 0x1F); // VALUE_BOOLEAN
-                    } else {
+                    if (c->static_fields[j].init_string) {
+                        uint32_t str_idx = smali_pool_find(&ctx->strings, c->static_fields[j].init_string);
                         int size = 4;
-                        if (val >= -128 && val <= 127) size = 1;
-                        else if (val >= -32768 && val <= 32767) size = 2;
-                        else if (val >= -8388608 && val <= 8388607) size = 3;
-                        
-                        uint8_t type_tag = 0x04; // VALUE_INT
-                        if (t == 'B') type_tag = 0x00;
-                        else if (t == 'S') type_tag = 0x02;
-                        else if (t == 'C') type_tag = 0x03;
-                        else if (t == 'J') type_tag = 0x06;
-                        else if (t == 'F') type_tag = 0x10;
-                        else if (t == 'D') type_tag = 0x11;
-                        if (t == 'L' || t == '[') type_tag = 0x1E; // Fallback to NULL for objects
-
-                        if (type_tag == 0x1E) {
-                            buf_write_u8(&b, 0x1E);
+                        if (str_idx <= 0xFF) size = 1;
+                        else if (str_idx <= 0xFFFF) size = 2;
+                        else if (str_idx <= 0xFFFFFF) size = 3;
+                        buf_write_u8(&b, ((size - 1) << 5) | 0x17); // VALUE_STRING
+                        for (int k = 0; k < size; k++) {
+                            buf_write_u8(&b, (str_idx >> (k * 8)) & 0xFF);
+                        }
+                    } else {
+                        int64_t val = (int64_t)c->static_fields[j].init_value;
+                        char t = c->static_fields[j].type[0];
+                        if (t == 'Z') {
+                            buf_write_u8(&b, (val ? 1 : 0) << 5 | 0x1F); // VALUE_BOOLEAN
                         } else {
-                            buf_write_u8(&b, ((size - 1) << 5) | type_tag);
-                            for (int k = 0; k < size; k++) {
-                                buf_write_u8(&b, (val >> (k * 8)) & 0xFF);
+                            int size = 8;
+                            if (val >= -128 && val <= 127) size = 1;
+                            else if (val >= -32768 && val <= 32767) size = 2;
+                            else if (val >= -8388608 && val <= 8388607) size = 3;
+                            else if (val >= -2147483648LL && val <= 2147483647LL) size = 4;
+                            else if (val >= -549755813888LL && val <= 549755813887LL) size = 5;
+                            else if (val >= -140737488355328LL && val <= 140737488355327LL) size = 6;
+                            else if (val >= -36028797018963968LL && val <= 36028797018963967LL) size = 7;
+                            
+                            uint8_t type_tag = 0x04; // VALUE_INT
+                            if (t == 'B') type_tag = 0x00;
+                            else if (t == 'S') type_tag = 0x02;
+                            else if (t == 'C') type_tag = 0x03;
+                            else if (t == 'J') type_tag = 0x06;
+                            else if (t == 'F') type_tag = 0x10;
+                            else if (t == 'D') type_tag = 0x11;
+                            if (t == 'L' || t == '[') type_tag = 0x1E; // Fallback to NULL for objects
+
+                            if (type_tag == 0x00) size = 1;
+                            else if (type_tag == 0x02 || type_tag == 0x03) { if (size > 2) size = 2; }
+                            else if (type_tag == 0x04 || type_tag == 0x10) { if (size > 4) size = 4; }
+
+                            if (type_tag == 0x1E) {
+                                buf_write_u8(&b, 0x1E);
+                            } else {
+                                buf_write_u8(&b, ((size - 1) << 5) | type_tag);
+                                for (int k = 0; k < size; k++) {
+                                    buf_write_u8(&b, (val >> (k * 8)) & 0xFF);
+                                }
                             }
                         }
                     }
@@ -779,6 +910,221 @@ int write_assembled_dex(smali_ctx_def_t *ctx, const char *out_dex) {
         } else {
             static_values_offsets[i] = 0;
         }
+    }
+    align_4(&b);
+
+    // 4.6 Write Annotations
+    uint32_t *annotations_dir_offsets = malloc(class_count * 4);
+    memset(annotations_dir_offsets, 0, class_count * 4);
+    
+    uint32_t annotation_item_count = 0;
+    uint32_t first_annotation_item_off = 0;
+    uint32_t annotation_set_item_count = 0;
+    uint32_t first_annotation_set_item_off = 0;
+    uint32_t annotation_set_ref_list_count = 0;
+    uint32_t first_annotation_set_ref_list_off = 0;
+    uint32_t annotations_directory_count = 0;
+    uint32_t first_annotations_directory_off = 0;
+
+    for (uint32_t i = 0; i < class_count; i++) {
+        smali_class_def_t *c = &ctx->classes[i];
+        
+        uint32_t field_ann_count = 0;
+        for (uint32_t j = 0; j < c->static_field_count; j++) if (c->static_fields[j].annotation_count > 0) field_ann_count++;
+        for (uint32_t j = 0; j < c->instance_field_count; j++) if (c->instance_fields[j].annotation_count > 0) field_ann_count++;
+        
+        uint32_t method_ann_count = 0;
+        uint32_t param_ann_count = 0;
+        for (int mtype = 0; mtype < 2; mtype++) {
+            uint32_t mc = (mtype == 0) ? c->direct_method_count : c->virtual_method_count;
+            smali_method_def_t *m_arr = (mtype == 0) ? c->direct_methods : c->virtual_methods;
+            for (uint32_t j = 0; j < mc; j++) {
+                if (m_arr[j].annotation_count > 0) method_ann_count++;
+                int has_param_ann = 0;
+                if (m_arr[j].param_annotations) {
+                    for (uint32_t p_idx = 0; p_idx < m_arr[j].param_annotation_cap; p_idx++) {
+                        if (m_arr[j].param_annotation_counts[p_idx] > 0) has_param_ann = 1;
+                    }
+                }
+                if (has_param_ann) param_ann_count++;
+            }
+        }
+        
+        if (c->annotation_count == 0 && field_ann_count == 0 && method_ann_count == 0 && param_ann_count == 0) {
+            continue;
+        }
+        
+        uint32_t class_set_off = 0;
+        if (c->annotation_count > 0) {
+            uint32_t *item_offs = malloc(c->annotation_count * 4);
+            for (uint32_t j = 0; j < c->annotation_count; j++) {
+                item_offs[j] = write_annotation_item(ctx, &b, &c->annotations[j]);
+                if (!first_annotation_item_off) first_annotation_item_off = item_offs[j];
+                annotation_item_count++;
+            }
+            class_set_off = write_annotation_set_item(&b, item_offs, c->annotation_count);
+            if (!first_annotation_set_item_off) first_annotation_set_item_off = class_set_off;
+            annotation_set_item_count++;
+            free(item_offs);
+        }
+        
+        uint32_t *field_idxs = malloc(field_ann_count * 4);
+        uint32_t *field_set_offs = malloc(field_ann_count * 4);
+        uint32_t f_idx = 0;
+        
+        for (uint32_t j = 0; j < c->static_field_count; j++) {
+            if (c->static_fields[j].annotation_count > 0) {
+                uint32_t *item_offs = malloc(c->static_fields[j].annotation_count * 4);
+                for (uint32_t k = 0; k < c->static_fields[j].annotation_count; k++) {
+                    item_offs[k] = write_annotation_item(ctx, &b, &c->static_fields[j].annotations[k]);
+                    if (!first_annotation_item_off) first_annotation_item_off = item_offs[k];
+                    annotation_item_count++;
+                }
+                field_set_offs[f_idx] = write_annotation_set_item(&b, item_offs, c->static_fields[j].annotation_count);
+                if (!first_annotation_set_item_off) first_annotation_set_item_off = field_set_offs[f_idx];
+                annotation_set_item_count++;
+                char key[1024]; snprintf(key, sizeof(key), "%s->%s:%s", c->descriptor, c->static_fields[j].name, c->static_fields[j].type);
+                field_idxs[f_idx] = smali_pool_find(&ctx->fields, key);
+                f_idx++;
+                free(item_offs);
+            }
+        }
+        for (uint32_t j = 0; j < c->instance_field_count; j++) {
+            if (c->instance_fields[j].annotation_count > 0) {
+                uint32_t *item_offs = malloc(c->instance_fields[j].annotation_count * 4);
+                for (uint32_t k = 0; k < c->instance_fields[j].annotation_count; k++) {
+                    item_offs[k] = write_annotation_item(ctx, &b, &c->instance_fields[j].annotations[k]);
+                    if (!first_annotation_item_off) first_annotation_item_off = item_offs[k];
+                    annotation_item_count++;
+                }
+                field_set_offs[f_idx] = write_annotation_set_item(&b, item_offs, c->instance_fields[j].annotation_count);
+                if (!first_annotation_set_item_off) first_annotation_set_item_off = field_set_offs[f_idx];
+                annotation_set_item_count++;
+                char key[1024]; snprintf(key, sizeof(key), "%s->%s:%s", c->descriptor, c->instance_fields[j].name, c->instance_fields[j].type);
+                field_idxs[f_idx] = smali_pool_find(&ctx->fields, key);
+                f_idx++;
+                free(item_offs);
+            }
+        }
+        
+        uint32_t *method_idxs = malloc(method_ann_count * 4);
+        uint32_t *method_set_offs = malloc(method_ann_count * 4);
+        uint32_t m_idx = 0;
+        
+        uint32_t *param_idxs = malloc(param_ann_count * 4);
+        uint32_t *param_ref_offs = malloc(param_ann_count * 4);
+        uint32_t p_idx_out = 0;
+        
+        for (int mtype = 0; mtype < 2; mtype++) {
+            uint32_t mc = (mtype == 0) ? c->direct_method_count : c->virtual_method_count;
+            smali_method_def_t *m_arr = (mtype == 0) ? c->direct_methods : c->virtual_methods;
+            for (uint32_t j = 0; j < mc; j++) {
+                char key[1024]; snprintf(key, sizeof(key), "%s->%s%s", c->descriptor, m_arr[j].name, m_arr[j].signature);
+                uint32_t pool_m_idx = smali_pool_find(&ctx->methods, key);
+                
+                if (m_arr[j].annotation_count > 0) {
+                    uint32_t *item_offs = malloc(m_arr[j].annotation_count * 4);
+                    for (uint32_t k = 0; k < m_arr[j].annotation_count; k++) {
+                        item_offs[k] = write_annotation_item(ctx, &b, &m_arr[j].annotations[k]);
+                        if (!first_annotation_item_off) first_annotation_item_off = item_offs[k];
+                        annotation_item_count++;
+                    }
+                    method_set_offs[m_idx] = write_annotation_set_item(&b, item_offs, m_arr[j].annotation_count);
+                    if (!first_annotation_set_item_off) first_annotation_set_item_off = method_set_offs[m_idx];
+                    annotation_set_item_count++;
+                    method_idxs[m_idx] = pool_m_idx;
+                    m_idx++;
+                    free(item_offs);
+                }
+                
+                int has_param = 0;
+                if (m_arr[j].param_annotations) {
+                    for (uint32_t p_idx = 0; p_idx < m_arr[j].param_annotation_cap; p_idx++) {
+                        if (m_arr[j].param_annotation_counts[p_idx] > 0) has_param = 1;
+                    }
+                }
+                if (has_param) {
+                    uint32_t param_cnt = m_arr[j].param_annotation_cap;
+                    uint32_t *set_offs = malloc(param_cnt * 4);
+                    for (uint32_t p_idx = 0; p_idx < param_cnt; p_idx++) {
+                        if (m_arr[j].param_annotation_counts[p_idx] > 0) {
+                            uint32_t acnt = m_arr[j].param_annotation_counts[p_idx];
+                            uint32_t *item_offs = malloc(acnt * 4);
+                            for (uint32_t k = 0; k < acnt; k++) {
+                                item_offs[k] = write_annotation_item(ctx, &b, &m_arr[j].param_annotations[p_idx][k]);
+                                if (!first_annotation_item_off) first_annotation_item_off = item_offs[k];
+                                annotation_item_count++;
+                            }
+                            set_offs[p_idx] = write_annotation_set_item(&b, item_offs, acnt);
+                            if (!first_annotation_set_item_off) first_annotation_set_item_off = set_offs[p_idx];
+                            annotation_set_item_count++;
+                            free(item_offs);
+                        } else {
+                            set_offs[p_idx] = 0;
+                        }
+                    }
+                    param_ref_offs[p_idx_out] = write_annotation_set_ref_list(&b, set_offs, param_cnt);
+                    if (!first_annotation_set_ref_list_off) first_annotation_set_ref_list_off = param_ref_offs[p_idx_out];
+                    annotation_set_ref_list_count++;
+                    param_idxs[p_idx_out] = pool_m_idx;
+                    p_idx_out++;
+                    free(set_offs);
+                }
+            }
+        }
+        
+        align_4(&b);
+        annotations_dir_offsets[i] = b.len;
+        if (!first_annotations_directory_off) first_annotations_directory_off = b.len;
+        annotations_directory_count++;
+        
+        buf_write_u32(&b, class_set_off);
+        buf_write_u32(&b, field_ann_count);
+        buf_write_u32(&b, method_ann_count);
+        buf_write_u32(&b, param_ann_count);
+        
+        for(uint32_t x=0; x<field_ann_count; x++) {
+            for(uint32_t y=x+1; y<field_ann_count; y++) {
+                if(field_idxs[x] > field_idxs[y]) {
+                    uint32_t tmp = field_idxs[x]; field_idxs[x] = field_idxs[y]; field_idxs[y] = tmp;
+                    tmp = field_set_offs[x]; field_set_offs[x] = field_set_offs[y]; field_set_offs[y] = tmp;
+                }
+            }
+        }
+        for (uint32_t j = 0; j < field_ann_count; j++) {
+            buf_write_u32(&b, field_idxs[j]);
+            buf_write_u32(&b, field_set_offs[j]);
+        }
+        
+        for(uint32_t x=0; x<method_ann_count; x++) {
+            for(uint32_t y=x+1; y<method_ann_count; y++) {
+                if(method_idxs[x] > method_idxs[y]) {
+                    uint32_t tmp = method_idxs[x]; method_idxs[x] = method_idxs[y]; method_idxs[y] = tmp;
+                    tmp = method_set_offs[x]; method_set_offs[x] = method_set_offs[y]; method_set_offs[y] = tmp;
+                }
+            }
+        }
+        for (uint32_t j = 0; j < method_ann_count; j++) {
+            buf_write_u32(&b, method_idxs[j]);
+            buf_write_u32(&b, method_set_offs[j]);
+        }
+        
+        for(uint32_t x=0; x<param_ann_count; x++) {
+            for(uint32_t y=x+1; y<param_ann_count; y++) {
+                if(param_idxs[x] > param_idxs[y]) {
+                    uint32_t tmp = param_idxs[x]; param_idxs[x] = param_idxs[y]; param_idxs[y] = tmp;
+                    tmp = param_ref_offs[x]; param_ref_offs[x] = param_ref_offs[y]; param_ref_offs[y] = tmp;
+                }
+            }
+        }
+        for (uint32_t j = 0; j < param_ann_count; j++) {
+            buf_write_u32(&b, param_idxs[j]);
+            buf_write_u32(&b, param_ref_offs[j]);
+        }
+        
+        free(field_idxs); free(field_set_offs);
+        free(method_idxs); free(method_set_offs);
+        free(param_idxs); free(param_ref_offs);
     }
     align_4(&b);
 
@@ -871,17 +1217,12 @@ int write_assembled_dex(smali_ctx_def_t *ctx, const char *out_dex) {
         if (c->super_class && super_idx == 0xFFFFFFFF) {
             printf("WARNING: Superclass '%s' of '%s' not found in types pool!\n", c->super_class, c->descriptor);
         }
-        uint32_t src_idx = c->source_file ? smali_pool_find(&ctx->strings, c->source_file) : 0xFFFFFFFF;
-        if (c->source_file && src_idx == 0xFFFFFFFF) {
-            printf("WARNING: Source file '%s' of '%s' not found in strings pool!\n", c->source_file, c->descriptor);
-        }
-
-        *(uint32_t *)(b.buf + def_off) = cls_idx;
+        *(uint32_t *)(b.buf + def_off) = smali_pool_find(&ctx->types, c->descriptor);
         *(uint32_t *)(b.buf + def_off + 4) = c->access_flags;
-        *(uint32_t *)(b.buf + def_off + 8) = super_idx;
-        *(uint32_t *)(b.buf + def_off + 12) = interfaces_offsets[i]; // interfaces_off
-        *(uint32_t *)(b.buf + def_off + 16) = src_idx;
-        *(uint32_t *)(b.buf + def_off + 20) = 0; // annotations_off
+        *(uint32_t *)(b.buf + def_off + 8) = c->super_class ? smali_pool_find(&ctx->types, c->super_class) : 0xFFFFFFFF;
+        *(uint32_t *)(b.buf + def_off + 12) = interfaces_offsets[i];
+        *(uint32_t *)(b.buf + def_off + 16) = c->source_file ? smali_pool_find(&ctx->strings, c->source_file) : 0xFFFFFFFF;
+        *(uint32_t *)(b.buf + def_off + 20) = annotations_dir_offsets[i]; // annotations_off
         *(uint32_t *)(b.buf + def_off + 24) = class_data_offsets[i];
         *(uint32_t *)(b.buf + def_off + 28) = static_values_offsets[i]; // static_values_off
     }
@@ -981,6 +1322,11 @@ int write_assembled_dex(smali_ctx_def_t *ctx, const char *out_dex) {
     if (class_count > 0) {
         entries[entry_count++] = (map_item_entry_t){0x2000, class_count, class_data_offsets[0]};
     }
+
+    if (annotation_item_count > 0) entries[entry_count++] = (map_item_entry_t){0x2004, annotation_item_count, first_annotation_item_off};
+    if (annotation_set_item_count > 0) entries[entry_count++] = (map_item_entry_t){0x1003, annotation_set_item_count, first_annotation_set_item_off};
+    if (annotation_set_ref_list_count > 0) entries[entry_count++] = (map_item_entry_t){0x1002, annotation_set_ref_list_count, first_annotation_set_ref_list_off};
+    if (annotations_directory_count > 0) entries[entry_count++] = (map_item_entry_t){0x2006, annotations_directory_count, first_annotations_directory_off};
 
     // Encoded Array Items (Static field initial values)
     uint32_t first_static_val_off = 0;

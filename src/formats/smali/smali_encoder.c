@@ -1,6 +1,7 @@
 #include "smali_parser.h"
 #include <string.h>
 #include <stdlib.h>
+#include <stdio.h>
 
 static uint32_t get_insn_size_words(smali_insn_t *ins) {
     switch (ins->fmt) {
@@ -25,6 +26,7 @@ static uint32_t get_insn_size_words(smali_insn_t *ins) {
         case 23: return 2; // F_22x
         case 24: return 3; // F_32x
         case 25: return 3; // F_31c
+        case 26: return 5; // F_51l
         case 101: return 4 + ins->payload_targets_count * 2; // packed-switch-payload
         case 102: return 2 + ins->payload_targets_count * 4; // sparse-switch-payload
         case 103: return 2 + (ins->payload_data_len + 1) / 2 + 2; // array-data payload (ident+width+size+data, padded to ushort)
@@ -44,6 +46,11 @@ uint32_t smali_encode_method_insns(smali_ctx_def_t *ctx, smali_method_def_t *m, 
     uint32_t *insn_offsets = malloc((m->insns_count + 1) * sizeof(uint32_t));
     uint32_t cur_offset = 0;
     for (uint32_t i = 0; i < m->insns_count; i++) {
+        if (m->insns[i].fmt == 101 || m->insns[i].fmt == 102 || m->insns[i].fmt == 103) {
+            if (cur_offset % 2 != 0) {
+                cur_offset++;
+            }
+        }
         insn_offsets[i] = cur_offset;
         cur_offset += get_insn_size_words(&m->insns[i]);
     }
@@ -60,6 +67,9 @@ uint32_t smali_encode_method_insns(smali_ctx_def_t *ctx, smali_method_def_t *m, 
                     break;
                 }
             }
+            if (write_idx != insn_offsets[i]) {
+                printf("MISMATCH at %d: write_idx=%d, insn_off=%d\n", i, write_idx, insn_offsets[i]);
+            }
             uint32_t switch_ins_off = 0;
             if (payload_label) {
                 for (uint32_t j = 0; j < m->insns_count; j++) {
@@ -71,6 +81,9 @@ uint32_t smali_encode_method_insns(smali_ctx_def_t *ctx, smali_method_def_t *m, 
             }
 
             if (ins->fmt == 101) {
+                if (write_idx % 2 != 0) {
+                    out_buf[write_idx++] = 0x0000;
+                }
                 out_buf[write_idx++] = 0x0100;
                 out_buf[write_idx++] = ins->payload_targets_count;
                 out_buf[write_idx++] = ins->lit & 0xFFFF;
@@ -88,6 +101,9 @@ uint32_t smali_encode_method_insns(smali_ctx_def_t *ctx, smali_method_def_t *m, 
                     out_buf[write_idx++] = (target_rel_off >> 16) & 0xFFFF;
                 }
             } else {
+                if (write_idx % 2 != 0) {
+                    out_buf[write_idx++] = 0x0000;
+                }
                 out_buf[write_idx++] = 0x0200;
                 out_buf[write_idx++] = ins->payload_targets_count;
                 for (uint32_t t = 0; t < ins->payload_targets_count; t++) {
@@ -111,24 +127,39 @@ uint32_t smali_encode_method_insns(smali_ctx_def_t *ctx, smali_method_def_t *m, 
             continue;
         }
         if (ins->fmt == 103) {
+            if (write_idx != insn_offsets[i]) {
+                printf("MISMATCH 103 at %d: write_idx=%d, insn_off=%d\n", i, write_idx, insn_offsets[i]);
+            }
             /* array-data payload */
+            if (write_idx % 2 != 0) {
+                out_buf[write_idx++] = 0x0000;
+            }
             out_buf[write_idx++] = 0x0300; /* ident */
             out_buf[write_idx++] = ins->payload_element_width;
             uint32_t count = ins->payload_data_len / ins->payload_element_width;
             out_buf[write_idx++] = count & 0xFFFF;
             out_buf[write_idx++] = (count >> 16) & 0xFFFF;
+            printf("ARRAY DATA WRITING %d bytes: ", ins->payload_data_len);
             for (uint32_t bi2 = 0; bi2 < ins->payload_data_len; bi2++) {
+                printf("%02x ", ins->payload_data[bi2]);
                 if (bi2 % 2 == 0) {
                     out_buf[write_idx] = ins->payload_data[bi2];
                 } else {
                     out_buf[write_idx++] |= (uint16_t)ins->payload_data[bi2] << 8;
                 }
             }
+            printf("\n");
             if (ins->payload_data_len % 2 != 0) write_idx++;
             continue;
         }
+        
+        if (write_idx != insn_offsets[i]) {
+            printf("MISMATCH normal at %d (fmt %d): write_idx=%d, insn_off=%d\n", i, ins->fmt, write_idx, insn_offsets[i]);
+            write_idx = insn_offsets[i];
+        }
+        
         uint32_t ins_off = insn_offsets[i];
-        uint16_t w0 = ins->op, w1 = 0, w2 = 0;
+        uint16_t w0 = ins->op, w1 = 0, w2 = 0, w3 = 0, w4 = 0;
 
         int32_t rel_off = 0;
         if (ins->label_target) {
@@ -188,7 +219,9 @@ uint32_t smali_encode_method_insns(smali_ctx_def_t *ctx, smali_method_def_t *m, 
                 w0 = ins->op | (vA << 8) | (vB << 12); w1 = (uint16_t)rel_off; break;
             case 11: // F_21s
                 w0 = ins->op | (vA << 8);
-                w1 = (ins->op == 0x15) ? (uint16_t)(ins->lit >> 16) : (uint16_t)ins->lit;
+                if (ins->op == 0x15) w1 = (uint16_t)(ins->lit >> 16);
+                else if (ins->op == 0x19) w1 = (uint16_t)(ins->lit >> 48);
+                else w1 = (uint16_t)ins->lit;
                 break;
             case 12: // F_22b
                 w0 = ins->op | (vA << 8); w1 = (vB) | ((ins->lit & 0xFF) << 8); break;
@@ -219,11 +252,20 @@ uint32_t smali_encode_method_insns(smali_ctx_def_t *ctx, smali_method_def_t *m, 
                 w0 = ins->op; w1 = (uint16_t)vA; w2 = (uint16_t)vB; break;
             case 25: // F_31c
                 w0 = ins->op | (vA << 8); w1 = (uint16_t)(ref_idx & 0xFFFF); w2 = (uint16_t)(ref_idx >> 16); break;
+            case 26: // F_51l
+                w0 = ins->op | (vA << 8);
+                w1 = (uint16_t)ins->lit;
+                w2 = (uint16_t)(ins->lit >> 16);
+                w3 = (uint16_t)(ins->lit >> 32);
+                w4 = (uint16_t)(ins->lit >> 48);
+                break;
         }
         uint32_t words = get_insn_size_words(ins);
         out_buf[write_idx++] = w0;
         if (words > 1) out_buf[write_idx++] = w1;
         if (words > 2) out_buf[write_idx++] = w2;
+        if (words > 3) out_buf[write_idx++] = w3;
+        if (words > 4) out_buf[write_idx++] = w4;
     }
     free(insn_offsets);
     return write_idx;

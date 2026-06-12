@@ -23,7 +23,7 @@ typedef struct {
     uint32_t vC;
     uint32_t regs[5];
     char *ref_str;
-    int32_t lit;
+    int64_t lit;
     char *label_target;
     int line_number;     /* .line directive value, -1 if none */
 
@@ -36,34 +36,47 @@ typedef struct {
     uint16_t payload_element_width;
 } smali_insn_t;
 
-#define VALUE_TYPE_INT    0
-#define VALUE_TYPE_LONG   1
-#define VALUE_TYPE_FLOAT  2
-#define VALUE_TYPE_DOUBLE 3
-#define VALUE_TYPE_STRING 4
-#define VALUE_TYPE_TYPE   5
-#define VALUE_TYPE_FIELD  6
-#define VALUE_TYPE_METHOD 7
-#define VALUE_TYPE_ENUM   8
-#define VALUE_TYPE_NULL   9
-#define VALUE_TYPE_BOOL   10
-#define VALUE_TYPE_BYTE   11
-#define VALUE_TYPE_SHORT  12
-#define VALUE_TYPE_CHAR   13
-#define VALUE_TYPE_ARRAY  14
-#define VALUE_TYPE_ANNOT  15
+typedef struct smali_encoded_value_s smali_encoded_value_t;
+typedef struct smali_annotation_element_s smali_annotation_element_t;
+typedef struct smali_annotation_s smali_annotation_t;
+
+struct smali_encoded_value_s {
+    uint8_t type;
+    union {
+        uint64_t v_int;
+        double v_double;
+        char *v_string;
+        struct {
+            smali_encoded_value_t *elements;
+            uint32_t count;
+        } v_array;
+        smali_annotation_t *v_annotation;
+    };
+};
+
+struct smali_annotation_element_s {
+    char *name;
+    smali_encoded_value_t value;
+};
+
+struct smali_annotation_s {
+    uint8_t visibility; /* 0=build, 1=runtime, 2=system */
+    char *type;
+    smali_annotation_element_t *elements;
+    uint32_t element_count;
+    uint32_t element_cap;
+};
 
 typedef struct {
     uint32_t access_flags;
     char *name;
     char *type;
+    uint64_t init_value;
     int has_init_value;
-    int value_type;        /* VALUE_TYPE_* */
-    int64_t value_int;     /* for int/long types */
-    double value_double;   /* for float/double */
-    char *value_str;       /* for string/type/enum/field/method refs */
-    uint32_t *array_vals;  /* for array encoded_values */
-    uint32_t array_count;
+    char *init_string;
+    smali_annotation_t *annotations;
+    uint32_t annotation_count;
+    uint32_t annotation_cap;
 } smali_field_def_t;
 
 typedef struct {
@@ -99,6 +112,12 @@ typedef struct {
     char **local_sigs;
     uint32_t *local_regs;
     uint32_t local_count;
+    smali_annotation_t *annotations;
+    uint32_t annotation_count;
+    uint32_t annotation_cap;
+    smali_annotation_t **param_annotations;
+    uint32_t *param_annotation_counts;
+    uint32_t param_annotation_cap;
 } smali_method_def_t;
 
 typedef struct {
@@ -120,6 +139,9 @@ typedef struct {
     uint32_t virtual_method_count;
     uint32_t virtual_method_cap;
     uint32_t access_flags;
+    smali_annotation_t *annotations;
+    uint32_t annotation_count;
+    uint32_t annotation_cap;
 } smali_class_def_t;
 
 typedef struct {
@@ -168,6 +190,8 @@ typedef struct {
 char *smali_next_token(char **p);
 char *smali_parse_string_literal(char **p);
 uint32_t smali_parse_register(const char *tok);
+smali_annotation_t *smali_parse_annotation(char **p);
+smali_encoded_value_t *smali_parse_encoded_value(char **p);
 
 // Pool functions
 uint32_t smali_pool_add(smali_pool_strings_t *p, const char *str);

@@ -56,10 +56,167 @@ static uint32_t calculate_ins_count(const char *sig, uint32_t access_flags) {
     return count;
 }
 
+smali_encoded_value_t *smali_parse_encoded_value(char **p);
+
+smali_annotation_t *smali_parse_annotation(char **p) {
+    char *visibility_tok = smali_next_token(p);
+    char *type_tok = smali_next_token(p);
+    
+    if (!visibility_tok || !type_tok) return NULL;
+    
+    smali_annotation_t *annot = calloc(1, sizeof(smali_annotation_t));
+    if (strcmp(visibility_tok, "build") == 0) annot->visibility = 0;
+    else if (strcmp(visibility_tok, "runtime") == 0) annot->visibility = 1;
+    else if (strcmp(visibility_tok, "system") == 0) annot->visibility = 2;
+    
+    annot->type = strdup(type_tok);
+    if (visibility_tok) free(visibility_tok);
+    if (type_tok) free(type_tok);
+    
+    while (**p) {
+        while (**p == ' ' || **p == '\t' || **p == '\r' || **p == '\n') (*p)++;
+        if (!**p) break;
+        
+        char *tok = smali_next_token(p);
+        if (!tok) continue;
+        
+        if (strcmp(tok, ".end") == 0) {
+            char *next = smali_next_token(p);
+            if (next) free(next);
+            free(tok);
+            break;
+        }
+        
+        char *eq_tok = smali_next_token(p);
+        if (eq_tok && strcmp(eq_tok, "=") == 0) {
+            smali_encoded_value_t *val = smali_parse_encoded_value(p);
+            if (val) {
+                if (annot->element_count >= annot->element_cap) {
+                    annot->element_cap = annot->element_cap ? annot->element_cap * 2 : 4;
+                    annot->elements = realloc(annot->elements, annot->element_cap * sizeof(smali_annotation_element_t));
+                }
+                annot->elements[annot->element_count].name = strdup(tok);
+                annot->elements[annot->element_count].value = *val;
+                annot->element_count++;
+                free(val);
+            }
+        }
+        if (eq_tok) free(eq_tok);
+        free(tok);
+    }
+    return annot;
+}
+
+smali_encoded_value_t *smali_parse_encoded_value(char **p) {
+    char *start = *p;
+    while (*start && (*start == ' ' || *start == '\t' || *start == '\n' || *start == '\r')) start++;
+    
+    if (*start == '"') {
+        char *str = smali_parse_string_literal(&start);
+        *p = start;
+        smali_encoded_value_t *val = calloc(1, sizeof(smali_encoded_value_t));
+        val->type = 0x17; // String
+        val->v_string = str;
+        return val;
+    } else if (*start == '{') {
+        start++;
+        smali_encoded_value_t *val = calloc(1, sizeof(smali_encoded_value_t));
+        val->type = 0x1c; // Array
+        while (*start && *start != '}') {
+            char *tmp = start;
+            smali_encoded_value_t *elem = smali_parse_encoded_value(&tmp);
+            if (elem) {
+                if (val->v_array.count == 0) val->v_array.elements = malloc(sizeof(smali_encoded_value_t));
+                else val->v_array.elements = realloc(val->v_array.elements, (val->v_array.count + 1) * sizeof(smali_encoded_value_t));
+                val->v_array.elements[val->v_array.count++] = *elem;
+                free(elem);
+            }
+            start = tmp;
+            while (*start && (*start == ' ' || *start == '\t' || *start == ',' || *start == '\n' || *start == '\r')) start++;
+        }
+        if (*start == '}') start++;
+        *p = start;
+        return val;
+    } else {
+        char *tok = smali_next_token(&start);
+        *p = start;
+        if (!tok) return NULL;
+        
+        smali_encoded_value_t *val = calloc(1, sizeof(smali_encoded_value_t));
+        if (strcmp(tok, ".subannotation") == 0) {
+            val->type = 0x1d; // Annotation
+            val->v_annotation = smali_parse_annotation(p);
+        } else if (strcmp(tok, ".enum") == 0) {
+            val->type = 0x1b; // Enum
+            char *enum_val = smali_next_token(p);
+            if (enum_val) {
+                val->v_string = strdup(enum_val);
+                printf("PARSED ENUM: %s\n", enum_val);
+                free(enum_val);
+            }
+        } else if (strcmp(tok, "true") == 0) {
+            val->type = 0x1f; // Boolean
+            val->v_int = 1;
+        } else if (strcmp(tok, "false") == 0) {
+            val->type = 0x1f;
+            val->v_int = 0;
+        } else if (strcmp(tok, "null") == 0) {
+            val->type = 0x1e; // Null
+        } else if (strchr(tok, '(') && strstr(tok, "->")) {
+            val->type = 0x1a; // Method
+            val->v_string = strdup(tok);
+        } else if (strchr(tok, ':') && strstr(tok, "->")) {
+            val->type = 0x19; // Field
+            val->v_string = strdup(tok);
+        } else if (tok[0] == 'L' && strchr(tok, ';')) {
+            val->type = 0x18; // Type
+            val->v_string = strdup(tok);
+        } else if ((tok[0] >= '0' && tok[0] <= '9') || tok[0] == '-' || tok[0] == '+') {
+            size_t len = strlen(tok);
+            char last_c = tok[len-1];
+            if (last_c == 'L' || last_c == 'l') {
+                val->type = 0x06; // Long
+                tok[len-1] = '\0';
+                val->v_int = strtoull(tok, NULL, 0);
+            } else if (last_c == 'f' || last_c == 'F') {
+                val->type = 0x10; // Float
+                tok[len-1] = '\0';
+                float f = strtof(tok, NULL);
+                uint32_t fv; memcpy(&fv, &f, 4);
+                val->v_int = fv;
+            } else if (last_c == 'd' || last_c == 'D') {
+                val->type = 0x11; // Double
+                tok[len-1] = '\0';
+                double d = strtod(tok, NULL);
+                uint64_t dv; memcpy(&dv, &d, 8);
+                val->v_int = dv;
+            } else if (last_c == 't' || last_c == 'T') {
+                val->type = 0x00; // Byte
+                tok[len-1] = '\0';
+                val->v_int = strtoul(tok, NULL, 0);
+            } else if (last_c == 's' || last_c == 'S') {
+                val->type = 0x02; // Short
+                tok[len-1] = '\0';
+                val->v_int = strtoul(tok, NULL, 0);
+            } else if (last_c == 'c' || last_c == 'C') {
+                val->type = 0x03; // Char
+                tok[len-1] = '\0';
+                val->v_int = strtoul(tok, NULL, 0);
+            } else {
+                val->type = 0x04; // Int
+                val->v_int = strtoul(tok, NULL, 0);
+            }
+        }
+        free(tok);
+        return val;
+    }
+}
+
 int parse_smali_file_content(smali_ctx_def_t *ctx, const char *text) {
     char *text_copy = strdup(text);
     char *p = text_copy;
     smali_class_def_t *curr = NULL;
+    smali_field_def_t *last_field = NULL;
 
     while (*p) {
         while (*p == ' ' || *p == '\t' || *p == '\r' || *p == '\n') p++;
@@ -145,63 +302,75 @@ int parse_smali_file_content(smali_ctx_def_t *ctx, const char *text) {
                         }
                         field = &curr->instance_fields[curr->instance_field_count++];
                     }
+                    uint64_t init_val = 0;
                     int has_init = 0;
-                    int val_type = VALUE_TYPE_INT;
-                    int64_t val_int = 0;
-                    double val_double = 0.0;
-                    char *val_str = NULL;
+                    char *init_string = NULL;
                     char *eq_tok = smali_next_token(&p);
-                    if (eq_tok && strcmp(eq_tok, "=") == 0) {
-                        free(eq_tok);
-                        /* peek at raw source to detect quoted strings */
-                        while (*p == ' ' || *p == '\t') p++;
-                        int is_quoted = (*p == '"');
-                        char *val_tok = smali_next_token(&p);
-                        if (val_tok) {
-                            if (strcmp(val_tok, "null") == 0) {
-                                val_type = VALUE_TYPE_NULL; has_init = 1; free(val_tok);
-                            } else if (strcmp(val_tok, "true") == 0) {
-                                val_type = VALUE_TYPE_BOOL; val_int = 1; has_init = 1; free(val_tok);
-                            } else if (strcmp(val_tok, "false") == 0) {
-                                val_type = VALUE_TYPE_BOOL; val_int = 0; has_init = 1; free(val_tok);
-                            } else if (is_quoted) {
-                                val_type = VALUE_TYPE_STRING; val_str = val_tok; has_init = 1;
-                            } else if (strcmp(val_tok, ".enum") == 0) {
-                                val_type = VALUE_TYPE_ENUM; free(val_tok);
-                                val_str = smali_next_token(&p);
-                                if (val_str) has_init = 1;
-                            } else if (strchr(val_tok, '.') && (strstr(val_tok, "f") || strstr(val_tok, "d"))) {
-                                if (strchr(val_tok, 'd')) {
-                                    val_type = VALUE_TYPE_DOUBLE;
+                    if (eq_tok) {
+                        if (strcmp(eq_tok, "=") == 0) {
+                            char *start = p;
+                            while (start && (*start == ' ' || *start == '\t' || *start == '\r')) start++;
+                            int is_str = (start && *start == '"');
+                            char *val_tok = smali_next_token(&p);
+                            if (val_tok) {
+                                if (is_str) {
+                                    init_string = val_tok;
+                                    has_init = 1;
+                                } else if (strcmp(val_tok, "null") == 0) {
+                                    has_init = 1;
+                                    free(val_tok);
+                                } else if (strcmp(val_tok, "true") == 0) {
+                                    init_val = 1;
+                                    has_init = 1;
+                                    free(val_tok);
+                                } else if (strcmp(val_tok, "false") == 0) {
+                                    init_val = 0;
+                                    has_init = 1;
+                                    free(val_tok);
                                 } else {
-                                    val_type = VALUE_TYPE_FLOAT;
+                                    size_t len = strlen(val_tok);
+                                    char last_c = val_tok[len-1];
+                                    if (type[0] == 'F') {
+                                        if (last_c == 'f' || last_c == 'F') val_tok[len-1] = '\0';
+                                        float f = strtof(val_tok, NULL);
+                                        uint32_t fv; memcpy(&fv, &f, 4);
+                                        init_val = fv;
+                                    } else if (type[0] == 'D') {
+                                        if (last_c == 'd' || last_c == 'D') val_tok[len-1] = '\0';
+                                        double d = strtod(val_tok, NULL);
+                                        uint64_t dv; memcpy(&dv, &d, 8);
+                                        init_val = dv;
+                                    } else {
+                                        if ((last_c >= 'a' && last_c <= 'z') || (last_c >= 'A' && last_c <= 'Z')) {
+                                            if (val_tok[0] != '0' || (val_tok[1] != 'x' && val_tok[1] != 'X')) {
+                                                // Only strip suffix if it's not a hex string, or if we know it's a suffix.
+                                                // Wait, long suffix 'L' or 's' or 't'
+                                                if (last_c == 'L' || last_c == 'l' || last_c == 't' || last_c == 'T' || last_c == 's' || last_c == 'S' || last_c == 'c' || last_c == 'C') {
+                                                    val_tok[len-1] = '\0';
+                                                }
+                                            } else if (last_c == 'L' || last_c == 'l' || last_c == 't' || last_c == 'T' || last_c == 's' || last_c == 'S') {
+                                                if (last_c != 'F' && last_c != 'f' && last_c != 'd' && last_c != 'D' && last_c != 'c' && last_c != 'C' && last_c != 'a' && last_c != 'A' && last_c != 'b' && last_c != 'B' && last_c != 'e' && last_c != 'E') {
+                                                    val_tok[len-1] = '\0';
+                                                }
+                                            }
+                                        }
+                                        init_val = (uint64_t)strtoull(val_tok, NULL, 0);
+                                        // printf("PARSED FIELD %s val=%s -> %llu\n", name, val_tok, (unsigned long long)init_val);
+                                    }
+                                    has_init = 1;
+                                    free(val_tok);
                                 }
-                                val_double = strtod(val_tok, NULL);
-                                has_init = 1; free(val_tok);
-                            } else if (val_tok[0] == 'L' || val_tok[0] == '[') {
-                                val_type = VALUE_TYPE_TYPE; val_str = val_tok; has_init = 1;
-                            } else {
-                                char *end = NULL;
-                                val_int = strtoll(val_tok, &end, 0);
-                                if (end && *end == 'L') val_type = VALUE_TYPE_LONG;
-                                else if (end && *end == 's') val_type = VALUE_TYPE_SHORT;
-                                else if (end && *end == 't') val_type = VALUE_TYPE_BYTE;
-                                has_init = 1; free(val_tok);
                             }
                         }
-                    } else if (eq_tok) {
                         free(eq_tok);
                     }
                     field->access_flags = access_flags;
                     field->name = name;
                     field->type = type;
+                    field->init_value = init_val;
                     field->has_init_value = has_init;
-                    field->value_type = val_type;
-                    field->value_int = val_int;
-                    field->value_double = val_double;
-                    field->value_str = val_str;
-                    field->array_vals = NULL;
-                    field->array_count = 0;
+                    field->init_string = init_string;
+                    last_field = field;
                 }
                 free(name_type);
             }
@@ -263,29 +432,32 @@ int parse_smali_file_content(smali_ctx_def_t *ctx, const char *text) {
                 free(name_sig);
             }
         } else if (strcmp(tok, ".annotation") == 0) {
-            // Skip the entire annotation block
-            int depth = 1;
-            free(tok);
-            while (depth > 0 && *p) {
-                char *line_end_inner = strchr(p, '\n');
-                if (!line_end_inner) line_end_inner = p + strlen(p);
-                char *p_inner = p;
-                char *tok_inner = smali_next_token(&p_inner);
-                if (tok_inner) {
-                    if (strcmp(tok_inner, ".annotation") == 0) {
-                        depth++;
-                    } else if (strcmp(tok_inner, ".end") == 0) {
-                        char *next_inner = smali_next_token(&p_inner);
-                        if (next_inner && strcmp(next_inner, "annotation") == 0) {
-                            depth--;
-                        }
-                        if (next_inner) free(next_inner);
+            smali_annotation_t *annot = smali_parse_annotation(&p);
+            if (annot) {
+                if (last_field) {
+                    if (last_field->annotation_count >= last_field->annotation_cap) {
+                        last_field->annotation_cap = last_field->annotation_cap ? last_field->annotation_cap * 2 : 4;
+                        last_field->annotations = realloc(last_field->annotations, last_field->annotation_cap * sizeof(smali_annotation_t));
                     }
-                    free(tok_inner);
+                    last_field->annotations[last_field->annotation_count++] = *annot;
+                } else if (curr) {
+                    if (curr->annotation_count >= curr->annotation_cap) {
+                        curr->annotation_cap = curr->annotation_cap ? curr->annotation_cap * 2 : 4;
+                        curr->annotations = realloc(curr->annotations, curr->annotation_cap * sizeof(smali_annotation_t));
+                    }
+                    curr->annotations[curr->annotation_count++] = *annot;
                 }
-                p = line_end_inner;
-                if (*p == '\n') p++;
+                free(annot);
             }
+            free(tok);
+            continue;
+        } else if (strcmp(tok, ".end") == 0) {
+            char *next = smali_next_token(&p);
+            if (next) {
+                if (strcmp(next, "field") == 0) last_field = NULL;
+                free(next);
+            }
+            free(tok);
             continue;
         }
         int is_method = (strcmp(tok, ".method") == 0);
