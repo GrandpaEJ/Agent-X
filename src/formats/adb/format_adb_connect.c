@@ -88,7 +88,7 @@ int write_msg(int fd, uint32_t cmd, uint32_t arg0, uint32_t arg1,
     return 0;
 }
 
-static int read_next_msg(int fd, adb_msg *msg, uint8_t **payload) {
+int read_next_msg(int fd, adb_msg *msg, uint8_t **payload) {
     *payload = NULL;
     if (read_msg(fd, msg)) return -1;
     if (msg->data_length > 0) {
@@ -102,8 +102,26 @@ static int read_next_msg(int fd, adb_msg *msg, uint8_t **payload) {
 int adb_connect(adb_conn *conn) {
     memset(conn, 0, sizeof(*conn));
     conn->fd = -1;
-    conn->fd = tcp_connect("127.0.0.1", ADB_PORT);
-    if (conn->fd < 0) return -1;
+
+    // Try connecting directly to device on ADB port 5555 first
+    {   const char *dev_host = getenv("ADB_DEVICE_HOST");
+        if (!dev_host) dev_host = "192.168.240.112";
+        conn->fd = tcp_connect(dev_host, 5555);
+    }
+    if (conn->fd < 0) {
+        // Fallback: connect via ADB server at 127.0.0.1:5037
+        conn->fd = tcp_connect("127.0.0.1", ADB_PORT);
+        if (conn->fd < 0) return -1;
+
+        const char *svc = "host:transport-any";
+        int slen = strlen(svc);
+        char cmd[64];
+        snprintf(cmd, sizeof(cmd), "%04x%s", slen, svc);
+        if (send_all(conn->fd, cmd, 4 + slen)) { close(conn->fd); conn->fd = -1; return -1; }
+        char ok[5] = {0};
+        if (recv_all(conn->fd, ok, 4)) { close(conn->fd); conn->fd = -1; return -1; }
+        if (ok[0] != 'O' || ok[1] != 'K') { close(conn->fd); conn->fd = -1; return -1; }
+    }
 
     char system_type[64] = "agent-x::";
     if (write_msg(conn->fd, A_CNXN, ADB_VERSION, MAX_PAYLOAD,
@@ -116,7 +134,8 @@ int adb_connect(adb_conn *conn) {
     adb_msg msg;
     uint8_t *payload = NULL;
 
-    while (1) {
+    int auth_retries = 0;
+    while (auth_retries < 5) {
         if (read_next_msg(conn->fd, &msg, &payload)) {
             free(payload);
             close(conn->fd); conn->fd = -1; return -1;
@@ -148,8 +167,25 @@ int adb_connect(adb_conn *conn) {
             if (write_msg(conn->fd, A_AUTH, AUTH_SIGNATURE, 0, sig, 256)) {
                 free(payload); close(conn->fd); conn->fd = -1; return -1;
             }
-            uint8_t pubkey_dummy[1] = {0};
-            write_msg(conn->fd, A_AUTH, AUTH_RSAPUBLICKEY, 0, pubkey_dummy, 0);
+            // Send public key
+            char *home = getenv("HOME");
+            char pubpath[1024];
+            snprintf(pubpath, sizeof(pubpath), "%s/.android/adbkey.pub", home ? home : "");
+            FILE *pfp = fopen(pubpath, "rb");
+            if (!pfp) { free(payload); close(conn->fd); conn->fd = -1; return -1; }
+            fseek(pfp, 0, SEEK_END);
+            long pubsz = ftell(pfp);
+            fseek(pfp, 0, SEEK_SET);
+            char *pubkey = malloc(pubsz + 1);
+            if (!pubkey) { fclose(pfp); free(payload); close(conn->fd); conn->fd = -1; return -1; }
+            size_t nread = fread(pubkey, 1, pubsz, pfp);
+            fclose(pfp);
+            pubkey[nread] = '\0';
+            // Trim trailing newline
+            while (nread > 0 && (pubkey[nread-1] == '\n' || pubkey[nread-1] == '\r')) nread--;
+            pubkey[nread] = '\0';
+            write_msg(conn->fd, A_AUTH, AUTH_RSAPUBLICKEY, 0, pubkey, nread + 1);
+            free(pubkey);
         }
 
         free(payload);
