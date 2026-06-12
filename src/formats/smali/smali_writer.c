@@ -725,19 +725,105 @@ int write_assembled_dex(smali_ctx_def_t *ctx, const char *out_dex) {
             buf_write_uleb128(&b, last_init_idx + 1);
             for (int32_t j = 0; j <= last_init_idx; j++) {
                 if (c->static_fields[j].has_init_value) {
-                    int32_t val = c->static_fields[j].init_value;
-                    int size = 4;
-                    if (val >= -128 && val <= 127) size = 1;
-                    else if (val >= -32768 && val <= 32767) size = 2;
-                    else if (val >= -8388608 && val <= 8388607) size = 3;
-                    
-                    buf_write_u8(&b, ((size - 1) << 5) | 0x04);
-                    for (int k = 0; k < size; k++) {
-                        buf_write_u8(&b, (val >> (k * 8)) & 0xFF);
+                    smali_field_def_t *f = &c->static_fields[j];
+                    switch (f->value_type) {
+                    case VALUE_TYPE_NULL:
+                        buf_write_u8(&b, 0x1e); break; /* encoded_null */
+                    case VALUE_TYPE_BOOL:
+                        buf_write_u8(&b, 0x1f | (f->value_int ? 0x20 : 0x00)); break;
+                    case VALUE_TYPE_BYTE: {
+                        int8_t v = (int8_t)f->value_int;
+                        buf_write_u8(&b, 0x00); buf_write_u8(&b, (uint8_t)v); break;
+                    }
+                    case VALUE_TYPE_SHORT: {
+                        int16_t v = (int16_t)f->value_int;
+                        buf_write_u8(&b, 0x22); buf_write_u8(&b, v & 0xFF);
+                        buf_write_u8(&b, (v >> 8) & 0xFF); break;
+                    }
+                    case VALUE_TYPE_CHAR: {
+                        uint16_t v = (uint16_t)f->value_int;
+                        buf_write_u8(&b, 0x22); buf_write_u8(&b, v & 0xFF);
+                        buf_write_u8(&b, (v >> 8) & 0xFF); break;
+                    }
+                    case VALUE_TYPE_INT: {
+                        int32_t v = (int32_t)f->value_int;
+                        int size = 4;
+                        if (v >= -128 && v <= 127) size = 1;
+                        else if (v >= -32768 && v <= 32767) size = 2;
+                        else if (v >= -8388608 && v <= 8388607) size = 3;
+                        buf_write_u8(&b, ((size - 1) << 5) | 0x04);
+                        for (int k = 0; k < size; k++)
+                            buf_write_u8(&b, (v >> (k * 8)) & 0xFF);
+                        break;
+                    }
+                    case VALUE_TYPE_LONG: {
+                        int64_t v = f->value_int;
+                        int size = 8;
+                        if (v >= -128 && v <= 127) size = 1;
+                        else if (v >= -32768 && v <= 32767) size = 2;
+                        else if (v >= -8388608 && v <= 8388607) size = 3;
+                        else if (v >= -2147483648LL && v <= 2147483647LL) size = 4;
+                        else if (v >= -549755813888LL && v <= 549755813887LL) size = 5;
+                        else if (v >= -140737488355328LL && v <= 140737488355327LL) size = 6;
+                        else if (v >= -36028797018963968LL && v <= 36028797018963967LL) size = 7;
+                        buf_write_u8(&b, ((size - 1) << 5) | 0x06);
+                        for (int k = 0; k < size; k++)
+                            buf_write_u8(&b, (v >> (k * 8)) & 0xFF);
+                        break;
+                    }
+                    case VALUE_TYPE_FLOAT: {
+                        float fv = (float)f->value_double;
+                        uint32_t fbits; memcpy(&fbits, &fv, 4);
+                        buf_write_u8(&b, 0x24); /* 4-byte arg, type=5 (float) */
+                        for (int k = 0; k < 4; k++)
+                            buf_write_u8(&b, (fbits >> (k * 8)) & 0xFF);
+                        break;
+                    }
+                    case VALUE_TYPE_DOUBLE: {
+                        double dv = f->value_double;
+                        uint64_t dbits; memcpy(&dbits, &dv, 8);
+                        buf_write_u8(&b, 0x26); /* 8-byte arg, type=6 (double) */
+                        for (int k = 0; k < 8; k++)
+                            buf_write_u8(&b, (dbits >> (k * 8)) & 0xFF);
+                        break;
+                    }
+                    case VALUE_TYPE_STRING: {
+                        uint32_t sidx = smali_pool_find(&ctx->strings, f->value_str);
+                        if (sidx == 0xFFFFFFFF) sidx = 0;
+                        int nbytes = 2;
+                        if (sidx > 0xFFFF) { buf_write_u8(&b, 0x47); nbytes = 3; }
+                        else buf_write_u8(&b, 0x27);
+                        for (int k = 0; k < nbytes; k++)
+                            buf_write_u8(&b, (sidx >> (k * 8)) & 0xFF);
+                        break;
+                    }
+                    case VALUE_TYPE_ENUM: {
+                        uint32_t fidx = smali_pool_find(&ctx->fields, f->value_str);
+                        if (fidx == 0xFFFFFFFF) fidx = 0;
+                        int nbytes = 2;
+                        if (fidx > 0xFFFF) { buf_write_u8(&b, 0x4b); nbytes = 3; }
+                        else buf_write_u8(&b, 0x2b);
+                        for (int k = 0; k < nbytes; k++)
+                            buf_write_u8(&b, (fidx >> (k * 8)) & 0xFF);
+                        break;
+                    }
+                    case VALUE_TYPE_TYPE: {
+                        uint32_t tidx = smali_pool_find(&ctx->types, f->value_str);
+                        if (tidx == 0xFFFFFFFF) tidx = 0;
+                        int nbytes = 2;
+                        if (tidx > 0xFFFF) { buf_write_u8(&b, 0x48); nbytes = 3; }
+                        else buf_write_u8(&b, 0x28);
+                        for (int k = 0; k < nbytes; k++)
+                            buf_write_u8(&b, (tidx >> (k * 8)) & 0xFF);
+                        break;
+                    }
+                    default:
+                        buf_write_u8(&b, 0x04); /* int 0 */
+                        buf_write_u8(&b, 0x00);
+                        break;
                     }
                 } else {
-                    buf_write_u8(&b, 0x04); // 1-byte int type
-                    buf_write_u8(&b, 0x00);
+                    buf_write_u8(&b, 0x04); buf_write_u8(&b, 0x00);
                 }
             }
         } else {

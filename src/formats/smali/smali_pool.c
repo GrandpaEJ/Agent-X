@@ -293,6 +293,15 @@ void smali_pool_build_all(smali_ctx_def_t *ctx) {
         for (uint32_t j = 0; j < c->static_field_count; j++) {
             smali_pool_add(&ctx->strings, c->static_fields[j].name);
             smali_pool_add(&ctx->strings, c->static_fields[j].type);
+            if (c->static_fields[j].has_init_value) {
+                smali_field_def_t *f = &c->static_fields[j];
+                if (f->value_type == VALUE_TYPE_STRING && f->value_str)
+                    smali_pool_add(&ctx->strings, f->value_str);
+                else if (f->value_type == VALUE_TYPE_TYPE && f->value_str)
+                    smali_pool_add(&ctx->strings, f->value_str);
+                else if (f->value_type == VALUE_TYPE_ENUM && f->value_str)
+                    smali_pool_add(&ctx->strings, f->value_str);
+            }
         }
         for (uint32_t j = 0; j < c->instance_field_count; j++) {
             smali_pool_add(&ctx->strings, c->instance_fields[j].name);

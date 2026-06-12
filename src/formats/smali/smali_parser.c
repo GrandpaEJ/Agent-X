@@ -145,25 +145,63 @@ int parse_smali_file_content(smali_ctx_def_t *ctx, const char *text) {
                         }
                         field = &curr->instance_fields[curr->instance_field_count++];
                     }
-                    uint32_t init_val = 0;
                     int has_init = 0;
+                    int val_type = VALUE_TYPE_INT;
+                    int64_t val_int = 0;
+                    double val_double = 0.0;
+                    char *val_str = NULL;
                     char *eq_tok = smali_next_token(&p);
-                    if (eq_tok) {
-                        if (strcmp(eq_tok, "=") == 0) {
-                            char *val_tok = smali_next_token(&p);
-                            if (val_tok) {
-                                init_val = (uint32_t)strtoul(val_tok, NULL, 0);
-                                has_init = 1;
-                                free(val_tok);
+                    if (eq_tok && strcmp(eq_tok, "=") == 0) {
+                        free(eq_tok);
+                        /* peek at raw source to detect quoted strings */
+                        while (*p == ' ' || *p == '\t') p++;
+                        int is_quoted = (*p == '"');
+                        char *val_tok = smali_next_token(&p);
+                        if (val_tok) {
+                            if (strcmp(val_tok, "null") == 0) {
+                                val_type = VALUE_TYPE_NULL; has_init = 1; free(val_tok);
+                            } else if (strcmp(val_tok, "true") == 0) {
+                                val_type = VALUE_TYPE_BOOL; val_int = 1; has_init = 1; free(val_tok);
+                            } else if (strcmp(val_tok, "false") == 0) {
+                                val_type = VALUE_TYPE_BOOL; val_int = 0; has_init = 1; free(val_tok);
+                            } else if (is_quoted) {
+                                val_type = VALUE_TYPE_STRING; val_str = val_tok; has_init = 1;
+                            } else if (strcmp(val_tok, ".enum") == 0) {
+                                val_type = VALUE_TYPE_ENUM; free(val_tok);
+                                val_str = smali_next_token(&p);
+                                if (val_str) has_init = 1;
+                            } else if (strchr(val_tok, '.') && (strstr(val_tok, "f") || strstr(val_tok, "d"))) {
+                                if (strchr(val_tok, 'd')) {
+                                    val_type = VALUE_TYPE_DOUBLE;
+                                } else {
+                                    val_type = VALUE_TYPE_FLOAT;
+                                }
+                                val_double = strtod(val_tok, NULL);
+                                has_init = 1; free(val_tok);
+                            } else if (val_tok[0] == 'L' || val_tok[0] == '[') {
+                                val_type = VALUE_TYPE_TYPE; val_str = val_tok; has_init = 1;
+                            } else {
+                                char *end = NULL;
+                                val_int = strtoll(val_tok, &end, 0);
+                                if (end && *end == 'L') val_type = VALUE_TYPE_LONG;
+                                else if (end && *end == 's') val_type = VALUE_TYPE_SHORT;
+                                else if (end && *end == 't') val_type = VALUE_TYPE_BYTE;
+                                has_init = 1; free(val_tok);
                             }
                         }
+                    } else if (eq_tok) {
                         free(eq_tok);
                     }
                     field->access_flags = access_flags;
                     field->name = name;
                     field->type = type;
-                    field->init_value = init_val;
                     field->has_init_value = has_init;
+                    field->value_type = val_type;
+                    field->value_int = val_int;
+                    field->value_double = val_double;
+                    field->value_str = val_str;
+                    field->array_vals = NULL;
+                    field->array_count = 0;
                 }
                 free(name_type);
             }
