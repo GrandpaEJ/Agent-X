@@ -136,6 +136,7 @@ static int write_annotation_set_ref(smali_sb *s, dex_ctx *ctx,
         uint32_t ann_item_off;
         memcpy(&ann_item_off, ctx->data + offset + 4 + i * 4, 4);
         if (ann_item_off == 0 || ann_item_off + 1 >= ctx->size) continue;
+        if (i > 0) smali_sa(s, "\n");
         int visibility = (int)ctx->data[ann_item_off];
         write_encoded_annotation(s, ctx, ctx->data + ann_item_off + 1,
                                   ctx->data + ctx->size, visibility, prefix);
