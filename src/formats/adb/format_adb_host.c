@@ -14,13 +14,12 @@ static int host_service(const char *service, char **out_data, size_t *out_len) {
     snprintf(cmd, sizeof(cmd), "%04x%s", slen, service);
     if (send_all(fd, cmd, 4 + slen)) { close(fd); return -1; }
 
-    char ok[4];
+    char ok[5] = {0};
     if (recv_all(fd, ok, 4)) { close(fd); return -1; }
     if (ok[0] != 'O' || ok[1] != 'K') { close(fd); return -1; }
 
-    char hexlen[4];
+    char hexlen[5] = {0};
     if (recv_all(fd, hexlen, 4)) { close(fd); return -1; }
-    hexlen[3] = '\0';
     int dlen;
     sscanf(hexlen, "%x", &dlen);
     if (dlen <= 0) { close(fd); return -1; }
