@@ -885,30 +885,36 @@ int write_assembled_dex(smali_ctx_def_t *ctx, const char *out_dex) {
                     case VALUE_TYPE_STRING: {
                         uint32_t sidx = smali_pool_find(&ctx->strings, f->value_str);
                         if (sidx == 0xFFFFFFFF) sidx = 0;
-                        int nbytes = 2;
-                        if (sidx > 0xFFFF) { buf_write_u8(&b, 0x47); nbytes = 3; }
-                        else buf_write_u8(&b, 0x27);
-                        for (int k = 0; k < nbytes; k++)
+                        int size = 4;
+                        if (sidx <= 0xFF) size = 1;
+                        else if (sidx <= 0xFFFF) size = 2;
+                        else if (sidx <= 0xFFFFFF) size = 3;
+                        buf_write_u8(&b, ((size - 1) << 5) | 0x17);
+                        for (int k = 0; k < size; k++)
                             buf_write_u8(&b, (sidx >> (k * 8)) & 0xFF);
                         break;
                     }
                     case VALUE_TYPE_ENUM: {
                         uint32_t fidx = smali_pool_find(&ctx->fields, f->value_str);
                         if (fidx == 0xFFFFFFFF) fidx = 0;
-                        int nbytes = 2;
-                        if (fidx > 0xFFFF) { buf_write_u8(&b, 0x4b); nbytes = 3; }
-                        else buf_write_u8(&b, 0x2b);
-                        for (int k = 0; k < nbytes; k++)
+                        int size = 4;
+                        if (fidx <= 0xFF) size = 1;
+                        else if (fidx <= 0xFFFF) size = 2;
+                        else if (fidx <= 0xFFFFFF) size = 3;
+                        buf_write_u8(&b, ((size - 1) << 5) | 0x1B);
+                        for (int k = 0; k < size; k++)
                             buf_write_u8(&b, (fidx >> (k * 8)) & 0xFF);
                         break;
                     }
                     case VALUE_TYPE_TYPE: {
                         uint32_t tidx = smali_pool_find(&ctx->types, f->value_str);
                         if (tidx == 0xFFFFFFFF) tidx = 0;
-                        int nbytes = 2;
-                        if (tidx > 0xFFFF) { buf_write_u8(&b, 0x48); nbytes = 3; }
-                        else buf_write_u8(&b, 0x28);
-                        for (int k = 0; k < nbytes; k++)
+                        int size = 4;
+                        if (tidx <= 0xFF) size = 1;
+                        else if (tidx <= 0xFFFF) size = 2;
+                        else if (tidx <= 0xFFFFFF) size = 3;
+                        buf_write_u8(&b, ((size - 1) << 5) | 0x18);
+                        for (int k = 0; k < size; k++)
                             buf_write_u8(&b, (tidx >> (k * 8)) & 0xFF);
                         break;
                     }
