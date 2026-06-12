@@ -47,6 +47,7 @@ typedef struct {
     uint32_t source_file_idx;
     uint32_t annotations_off;
     uint32_t class_data_off;
+    uint32_t static_values_off;
     int direct_count;
     int virtual_count;
     int static_count;

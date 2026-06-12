@@ -235,6 +235,7 @@ dex_ctx *dex_parse(const uint8_t *data, size_t size) {
             r32(data + co + 16, &ctx->classes[i].source_file_idx);
             r32(data + co + 20, &ctx->classes[i].annotations_off);
             r32(data + co + 24, &ctx->classes[i].class_data_off);
+            r32(data + co + 28, &ctx->classes[i].static_values_off);
             if (parse_class_data(ctx, &ctx->classes[i]))
                 { dex_free(ctx); return NULL; }
         }
