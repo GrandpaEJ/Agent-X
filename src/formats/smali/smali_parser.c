@@ -159,7 +159,12 @@ int parse_smali_file_content(smali_ctx_def_t *ctx, const char *text) {
                         char *val_tok = smali_next_token(&p);
                         if (val_tok) {
                             if (strcmp(val_tok, "null") == 0) {
-                                val_type = VALUE_TYPE_NULL; has_init = 1; free(val_tok);
+                                val_type = VALUE_TYPE_NULL; free(val_tok);
+                                // null initializers on reference types are redundant (default value)
+                                // only treat as init value for non-reference types
+                                if (type && (type[0] != 'L' && type[0] != '[')) {
+                                    has_init = 1;
+                                }
                             } else if (strcmp(val_tok, "true") == 0) {
                                 val_type = VALUE_TYPE_BOOL; val_int = 1; has_init = 1; free(val_tok);
                             } else if (strcmp(val_tok, "false") == 0) {

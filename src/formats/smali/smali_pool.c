@@ -278,9 +278,10 @@ void smali_pool_build_all(smali_ctx_def_t *ctx) {
     smali_pool_init(&ctx->fields);
     smali_pool_init(&ctx->methods);
 
-    // Seed primitive types
-    const char *prims[] = {"V", "Z", "B", "S", "C", "I", "J", "F", "D"};
-    for (int i = 0; i < 9; i++) smali_pool_add(&ctx->strings, prims[i]);
+    // Seed only common primitive type strings (VZIJFD are always needed for shorties)
+    // B, C, S are added on-demand when actually referenced
+    const char *prims[] = {"V", "Z", "I", "J", "F", "D"};
+    for (int i = 0; i < 6; i++) smali_pool_add(&ctx->strings, prims[i]);
 
     // 1. Gather all raw strings from class headers and instructions
     for (uint32_t i = 0; i < ctx->class_count; i++) {
@@ -329,7 +330,6 @@ void smali_pool_build_all(smali_ctx_def_t *ctx) {
             for (uint32_t j = 0; j < mc; j++) {
                 smali_method_def_t *m = &m_arr[j];
                 smali_pool_add(&ctx->strings, m->name);
-                smali_pool_add(&ctx->strings, m->signature);
                 add_sig_types(&ctx->strings, m->signature);
                 add_shorty_string(&ctx->strings, m->signature);
 
@@ -356,7 +356,6 @@ void smali_pool_build_all(smali_ctx_def_t *ctx) {
                             } else if (paren) {
                                 char *name_part = strndup(arrow + 2, paren - (arrow + 2));
                                 smali_pool_add(&ctx->strings, name_part);
-                                smali_pool_add(&ctx->strings, paren);
                                 add_sig_types(&ctx->strings, paren);
                                 add_shorty_string(&ctx->strings, paren);
                                 free(name_part);
@@ -373,13 +372,51 @@ void smali_pool_build_all(smali_ctx_def_t *ctx) {
 
     smali_pool_sort_strings(&ctx->strings);
 
-    // 2. Build Type Pool
+    // 2. Build Type Pool - only types actually referenced
     for (uint32_t i = 0; i < ctx->strings.count; i++) {
         const char *s = ctx->strings.strings[i];
-        if ((s[0] == 'L' && strchr(s, ';') && !strstr(s, "->")) || s[0] == '[' || 
-            (strlen(s) == 1 && (s[0] == 'V' || s[0] == 'Z' || s[0] == 'B' || s[0] == 'S' || 
-                                s[0] == 'C' || s[0] == 'I' || s[0] == 'J' || s[0] == 'F' || s[0] == 'D'))) {
+        if ((s[0] == 'L' && s[1] != '\0' && strchr(s, ';') && !strstr(s, "->")) || s[0] == '[') {
             smali_pool_add(&ctx->types, s);
+        }
+    }
+    /* V is always needed as a type (void return type) */
+    smali_pool_add(&ctx->types, "V");
+
+    // Add primitive types that appear as field types or return types in method sigs
+    for (uint32_t i = 0; i < ctx->class_count; i++) {
+        smali_class_def_t *c = &ctx->classes[i];
+        for (uint32_t j = 0; j < c->static_field_count; j++) {
+            if (c->static_fields[j].type && c->static_fields[j].type[0])
+                smali_pool_add(&ctx->types, c->static_fields[j].type);
+        }
+        for (uint32_t j = 0; j < c->instance_field_count; j++) {
+            if (c->instance_fields[j].type && c->instance_fields[j].type[0])
+                smali_pool_add(&ctx->types, c->instance_fields[j].type);
+        }
+        for (int mtype = 0; mtype < 2; mtype++) {
+            uint32_t mc = mtype ? c->virtual_method_count : c->direct_method_count;
+            smali_method_def_t *m_arr = mtype ? c->virtual_methods : c->direct_methods;
+            for (uint32_t j = 0; j < mc; j++) {
+                const char *sig = m_arr[j].signature;
+                const char *close = strchr(sig, ')');
+                if (close && close[1] && strchr("VZBSCIJFD", close[1])) {
+                    char ret_type[2] = { close[1], '\0' };
+                    smali_pool_add(&ctx->types, ret_type);
+                }
+                for (uint32_t k = 0; k < m_arr[j].insns_count; k++) {
+                    smali_insn_t *ins = &m_arr[j].insns[k];
+                    if (ins->ref_str) {
+                        char *paren = strchr(ins->ref_str, '(');
+                        if (paren) {
+                            const char *clos = strchr(paren, ')');
+                            if (clos && clos[1] && strchr("VZBSCIJFD", clos[1])) {
+                                char rtype[2] = { clos[1], '\0' };
+                                smali_pool_add(&ctx->types, rtype);
+                            }
+                        }
+                    }
+                }
+            }
         }
     }
 
