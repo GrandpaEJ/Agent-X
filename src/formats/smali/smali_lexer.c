@@ -1,4 +1,4 @@
-#include "smali_parser.h"
+#include "smali_lexer.h"
 #include <string.h>
 #include <stdlib.h>
 
@@ -45,7 +45,9 @@ char *smali_next_token(char **p) {
         return NULL;
     }
     if (*start == '"') {
-        return smali_parse_string_literal(&start);
+        char *tok = smali_parse_string_literal(&start);
+        *p = start;
+        return tok;
     }
     if (*start == '{') {
         char *end = start;

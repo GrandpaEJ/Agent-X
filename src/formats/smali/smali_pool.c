@@ -1,34 +1,58 @@
-#include "smali_parser.h"
+#include "smali_pool.h"
 #include <string.h>
 #include <stdlib.h>
 #include <stdio.h>
 
+static uint32_t pool_hash(const char *s) {
+    uint32_t h = 5381;
+    while (*s) h = h * 33 + (unsigned char)*s++;
+    return h;
+}
+
+static void pool_htable_insert(smali_pool_strings_t *p, uint32_t idx) {
+    uint32_t bi = pool_hash(p->strings[idx]) & (p->bucket_count - 1);
+    smali_pool_entry_t *e = malloc(sizeof(*e));
+    e->idx = idx;
+    e->next = p->buckets[bi];
+    p->buckets[bi] = e;
+}
+
 void smali_pool_init(smali_pool_strings_t *p) {
     p->strings = NULL; p->count = 0; p->cap = 0;
+    p->bucket_count = POOL_HASH_SIZE;
+    p->buckets = calloc(p->bucket_count, sizeof(smali_pool_entry_t *));
 }
 
 void smali_pool_free(smali_pool_strings_t *p) {
     for (uint32_t i = 0; i < p->count; i++) free(p->strings[i]);
     free(p->strings); p->strings = NULL; p->count = 0; p->cap = 0;
+    for (uint32_t i = 0; i < p->bucket_count; i++) {
+        smali_pool_entry_t *e = p->buckets[i];
+        while (e) { smali_pool_entry_t *n = e->next; free(e); e = n; }
+    }
+    free(p->buckets); p->buckets = NULL; p->bucket_count = 0;
 }
 
 uint32_t smali_pool_add(smali_pool_strings_t *p, const char *str) {
     if (!str) return 0xFFFFFFFF;
-    for (uint32_t i = 0; i < p->count; i++) {
-        if (strcmp(p->strings[i], str) == 0) return i;
+    uint32_t bi = pool_hash(str) & (p->bucket_count - 1);
+    for (smali_pool_entry_t *e = p->buckets[bi]; e; e = e->next) {
+        if (strcmp(p->strings[e->idx], str) == 0) return e->idx;
     }
     if (p->count >= p->cap) {
         p->cap = p->cap ? p->cap * 2 : 32;
         p->strings = realloc(p->strings, p->cap * sizeof(char *));
     }
     p->strings[p->count] = strdup(str);
+    pool_htable_insert(p, p->count);
     return p->count++;
 }
 
 uint32_t smali_pool_find(smali_pool_strings_t *p, const char *str) {
     if (!str) return 0xFFFFFFFF;
-    for (uint32_t i = 0; i < p->count; i++) {
-        if (strcmp(p->strings[i], str) == 0) return i;
+    uint32_t bi = pool_hash(str) & (p->bucket_count - 1);
+    for (smali_pool_entry_t *e = p->buckets[bi]; e; e = e->next) {
+        if (strcmp(p->strings[e->idx], str) == 0) return e->idx;
     }
     return 0xFFFFFFFF;
 }
@@ -37,8 +61,18 @@ static int comp_str(const void *a, const void *b) {
     return strcmp(*(const char **)a, *(const char **)b);
 }
 
+static void pool_rebuild_hash(smali_pool_strings_t *p) {
+    for (uint32_t i = 0; i < p->bucket_count; i++) {
+        smali_pool_entry_t *e = p->buckets[i];
+        while (e) { smali_pool_entry_t *n = e->next; free(e); e = n; }
+        p->buckets[i] = NULL;
+    }
+    for (uint32_t i = 0; i < p->count; i++) pool_htable_insert(p, i);
+}
+
 void smali_pool_sort_strings(smali_pool_strings_t *p) {
     qsort(p->strings, p->count, sizeof(char *), comp_str);
+    pool_rebuild_hash(p);
 }
 
 static void add_sig_types(smali_pool_strings_t *strings, const char *sig) {
@@ -497,7 +531,10 @@ void smali_pool_build_all(smali_ctx_def_t *ctx) {
 
     s_sort_ctx = ctx;
     qsort(ctx->protos.strings, ctx->protos.count, sizeof(char *), comp_proto_sig);
+    pool_rebuild_hash(&ctx->protos);
     qsort(ctx->fields.strings, ctx->fields.count, sizeof(char *), comp_field_key);
+    pool_rebuild_hash(&ctx->fields);
     qsort(ctx->methods.strings, ctx->methods.count, sizeof(char *), comp_method_key);
+    pool_rebuild_hash(&ctx->methods);
     s_sort_ctx = NULL;
 }

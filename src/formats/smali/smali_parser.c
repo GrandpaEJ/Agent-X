@@ -1,9 +1,9 @@
 #include "smali_parser.h"
+#include "smali_lexer.h"
+#include "smali_pool.h"
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-
-extern int smali_parse_method_body(smali_ctx_def_t *ctx, smali_method_def_t *m, char **p);
 
 static uint32_t parse_access_flags(const char *tok) {
     if (strcmp(tok, "public") == 0) return 0x0001;
@@ -292,12 +292,12 @@ int parse_smali_file_content(smali_ctx_def_t *ctx, const char *text) {
                 char *eq_tok = smali_next_token(&p);
                 if (eq_tok && strcmp(eq_tok, "=") == 0) {
                     free(eq_tok);
+                    while (*p == ' ' || *p == '\t') p++;
+                    int is_quoted = (*p == '"');
                     char *val_tok = smali_next_token(&p);
                     smali_annotation_elem_t *el = &ann.elems[ann.elem_count];
                     memset(el, 0, sizeof(*el));
                     el->name = elem_tok;
-                    while (*p == ' ' || *p == '\t') p++;
-                    int is_quoted = (*p == '"');
                     if (is_quoted) { el->value_type = VALUE_TYPE_STRING; el->value_str = val_tok; }
                     else if (strcmp(val_tok, "null") == 0) { el->value_type = VALUE_TYPE_NULL; free(val_tok); }
                     else if (strcmp(val_tok, "true") == 0) { el->value_type = VALUE_TYPE_BOOL; el->value_int = 1; free(val_tok); }
@@ -338,35 +338,4 @@ int parse_smali_file_path(smali_ctx_def_t *ctx, const char *filepath) {
     int ret = parse_smali_file_content(ctx, buf);
     free(buf);
     return ret;
-}
-
-#include <sys/types.h>
-#include <dirent.h>
-#include <sys/stat.h>
-
-#if defined(_WIN32)
-#define PATH_SEP '\\'
-#else
-#define PATH_SEP '/'
-#endif
-
-int collect_smali_files(const char *dir, char ***files, int *count) {
-    DIR *d = opendir(dir);
-    if (!d) return -1;
-    struct dirent *ent;
-    while ((ent = readdir(d)) != NULL) {
-        if (strcmp(ent->d_name, ".") == 0 || strcmp(ent->d_name, "..") == 0) continue;
-        char path[4096];
-        snprintf(path, sizeof(path), "%s%c%s", dir, PATH_SEP, ent->d_name);
-        struct stat st;
-        if (stat(path, &st) == 0 && S_ISDIR(st.st_mode)) {
-            collect_smali_files(path, files, count);
-        } else if (strstr(ent->d_name, ".smali")) {
-            (*files) = (char **)realloc(*files, (*count + 1) * sizeof(char *));
-            (*files)[*count] = strdup(path);
-            (*count)++;
-        }
-    }
-    closedir(d);
-    return 0;
 }

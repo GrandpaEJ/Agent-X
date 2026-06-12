@@ -1,4 +1,5 @@
-#include "smali_parser.h"
+#include "smali_encoder.h"
+#include "smali_pool.h"
 #include <string.h>
 #include <stdlib.h>
 

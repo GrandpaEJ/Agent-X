@@ -1,12 +1,39 @@
-#include "smali_internal.h"
 #include "smali_parser.h"
+#include "smali_pool.h"
+#include "smali_writer.h"
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <sys/types.h>
+#include <dirent.h>
+#include <sys/stat.h>
 
-extern int parse_smali_file_path(smali_ctx_def_t *ctx, const char *filepath);
-extern void smali_pool_build_all(smali_ctx_def_t *ctx);
-extern int write_assembled_dex(smali_ctx_def_t *ctx, const char *out_dex);
+#if defined(_WIN32)
+#define PATH_SEP '\\'
+#else
+#define PATH_SEP '/'
+#endif
+
+static int collect_smali_files(const char *dir, char ***files, int *count) {
+    DIR *d = opendir(dir);
+    if (!d) return -1;
+    struct dirent *ent;
+    while ((ent = readdir(d)) != NULL) {
+        if (strcmp(ent->d_name, ".") == 0 || strcmp(ent->d_name, "..") == 0) continue;
+        char path[4096];
+        snprintf(path, sizeof(path), "%s%c%s", dir, PATH_SEP, ent->d_name);
+        struct stat st;
+        if (stat(path, &st) == 0 && S_ISDIR(st.st_mode)) {
+            collect_smali_files(path, files, count);
+        } else if (strstr(ent->d_name, ".smali")) {
+            (*files) = (char **)realloc(*files, (*count + 1) * sizeof(char *));
+            (*files)[*count] = strdup(path);
+            (*count)++;
+        }
+    }
+    closedir(d);
+    return 0;
+}
 
 int smali_assemble(const char *src_dir, const char *out_dex) {
     if (!src_dir || !out_dex) return -1;

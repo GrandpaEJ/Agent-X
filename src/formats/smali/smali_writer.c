@@ -136,7 +136,7 @@ int write_assembled_dex(smali_ctx_def_t *ctx, const char *out_dex) {
     for (uint32_t i = 0; i < proto_count; i++) {
         const char *sig = ctx->protos.strings[i];
         uint32_t pcount = 0;
-        uint32_t ptypes[64];
+        uint32_t ptypes[256];
         const char *p = sig;
         if (*p == '(') p++;
         while (*p && *p != ')') {
@@ -150,7 +150,8 @@ int write_assembled_dex(smali_ctx_def_t *ctx, const char *out_dex) {
                 else p++;
             } else { p++; }
             char *type_str = strndup(type_start, p - type_start);
-            ptypes[pcount++] = smali_pool_find(&ctx->types, type_str);
+            if (pcount < 256) ptypes[pcount] = smali_pool_find(&ctx->types, type_str);
+            pcount++;
             free(type_str);
         }
         if (pcount > 0) {
@@ -744,10 +745,9 @@ int write_assembled_dex(smali_ctx_def_t *ctx, const char *out_dex) {
     *(uint32_t *)(b.buf + 8) = checksum;
 
     FILE *fp = fopen(out_dex, "wb");
-    if (fp) {
-        fwrite(b.buf, 1, b.len, fp);
-        fclose(fp);
-    }
+    if (!fp) return -1;
+    fwrite(b.buf, 1, b.len, fp);
+    fclose(fp);
     buf_free(&b);
     free(string_offsets); free(proto_param_offsets); free(interfaces_offsets); free(static_values_offsets); free(annot_offsets);
     for (uint32_t i = 0; i < class_count; i++) {
