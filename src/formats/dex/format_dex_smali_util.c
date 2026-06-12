@@ -22,7 +22,8 @@ const char *smali_aflags(uint32_t f) {
     if (f & 0x1000) { if (pos) buf[pos++]=' '; pos+=sprintf(buf+pos,"synthetic"); }
     if (f & 0x2000) { if (pos) buf[pos++]=' '; pos+=sprintf(buf+pos,"annotation"); }
     if (f & 0x4000) { if (pos) buf[pos++]=' '; pos+=sprintf(buf+pos,"enum"); }
-    if (f & 0x8000) { if (pos) buf[pos++]=' '; /* constructor */ }
+    if (f & 0x10000) { if (pos) buf[pos++]=' '; pos+=sprintf(buf+pos,"constructor"); }
+    if (f & 0x20000) { if (pos) buf[pos++]=' '; pos+=sprintf(buf+pos,"declared-synchronized"); }
     return buf;
 }
 
@@ -54,9 +55,27 @@ int smali_sf(smali_sb *s, const char *fmt, ...) {
     *s->l += n; return 0;
 }
 
+static const char *smali_escape_str(const char *raw) {
+    static char buf[4096];
+    size_t j = 0;
+    for (size_t i = 0; raw[i] && j < sizeof(buf) - 2; i++) {
+        unsigned char c = (unsigned char)raw[i];
+        if (c == '\n') { buf[j++]='\\'; buf[j++]='n'; }
+        else if (c == '\r') { buf[j++]='\\'; buf[j++]='r'; }
+        else if (c == '\t') { buf[j++]='\\'; buf[j++]='t'; }
+        else if (c == '\0') { buf[j++]='\\'; buf[j++]='0'; }
+        else if (c == '\\') { buf[j++]='\\'; buf[j++]='\\'; }
+        else if (c == '"') { buf[j++]='\\'; buf[j++]='"'; }
+        else if (c == '\'') { buf[j++]='\\'; buf[j++]='\''; }
+        else buf[j++] = raw[i];
+    }
+    buf[j] = '\0';
+    return buf;
+}
+
 const char *smali_res(dex_ctx *ctx, int k, uint32_t i) {
     switch (k) {
-    case 1: return i < ctx->string_count ? ctx->sp.strings[i] : "??";
+    case 1: return i < ctx->string_count ? smali_escape_str(ctx->sp.strings[i]) : "??";
     case 2: return i < ctx->type_count ? ctx->sp.strings[ctx->type_ids[i]] : "??";
     case 3:
         if (i < ctx->field_count) {
@@ -83,10 +102,10 @@ const char *smali_res(dex_ctx *ctx, int k, uint32_t i) {
                 if (po+pc*2<=ctx->size) for (uint32_t pi=0; pi<pc && pi<40; pi++) {
                     uint16_t ti; memcpy(&ti, ctx->data+po+pi*2, 2);
                     const char *pt = smali_res(ctx,2,ti);
-                    if (strlen(par)<240) strncat(par,pt, sizeof(par)-strlen(par)-1);
+                    if (strlen(par)<900) strncat(par,pt, sizeof(par)-strlen(par)-1);
                 }
             }
-            static char b[512];
+            static char b[1024];
             snprintf(b,sizeof(b), "%s->%s(%s)%s",
                 c?:smali_res(ctx,2,m->class_idx),
                 smali_res(ctx,1,m->name_idx), par,
