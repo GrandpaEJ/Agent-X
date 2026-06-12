@@ -459,6 +459,7 @@ static uint32_t write_code_item(smali_ctx_def_t *ctx, smali_buf_t *b, smali_meth
     }
 
     free(code_buf);
+    align_4(b);
     return offset;
 }
 
