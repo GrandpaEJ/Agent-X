@@ -290,6 +290,22 @@ void smali_pool_build_all(smali_ctx_def_t *ctx) {
         if (c->source_file) smali_pool_add(&ctx->strings, c->source_file);
         for (uint32_t j = 0; j < c->interface_count; j++) smali_pool_add(&ctx->strings, c->interfaces[j]);
 
+        /* add annotation types and element names */
+        if (c->annot_count > 0 && c->annots[0].type)
+            smali_pool_add(&ctx->strings, c->annots[0].type);
+        for (uint32_t j = 0; j < c->annot_count && j < MAX_ANNOTS; j++)
+            for (uint32_t k = 0; k < c->annots[j].elem_count && k < MAX_ANNOT_ELEMS; k++)
+                smali_pool_add(&ctx->strings, c->annots[j].elems[k].name);
+        /* add method annotation types */
+        for (int mt = 0; mt < 2; mt++) {
+            uint32_t mc = mt ? c->virtual_method_count : c->direct_method_count;
+            smali_method_def_t *ma = mt ? c->virtual_methods : c->direct_methods;
+            for (uint32_t j = 0; j < mc; j++) {
+                if (ma[j].has_annot && ma[j].annot.type)
+                    smali_pool_add(&ctx->strings, ma[j].annot.type);
+            }
+        }
+
         for (uint32_t j = 0; j < c->static_field_count; j++) {
             smali_pool_add(&ctx->strings, c->static_fields[j].name);
             smali_pool_add(&ctx->strings, c->static_fields[j].type);

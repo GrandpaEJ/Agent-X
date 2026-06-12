@@ -53,17 +53,47 @@ typedef struct {
 #define VALUE_TYPE_ARRAY  14
 #define VALUE_TYPE_ANNOT  15
 
+#define MAX_ANNOT_ELEMS 32
+#define MAX_ANNOTS 32
+
+typedef struct {
+    char *name;
+    char *type;           /* value type descriptor from VALUE_TYPE_* (stored as numeric) */
+    int value_type;
+    int64_t value_int;
+    double value_double;
+    char *value_str;      /* string/type/enum/field/method refs */
+    /* nested: for VALUE_TYPE_ARRAY */
+    uint32_t *array_types;
+    int64_t *array_ints;
+    char **array_strs;
+    uint32_t array_count;
+    /* nested: for VALUE_TYPE_ANNOT - sub-annotation */
+    char *annot_type;
+    int annot_elem_count;
+    /* these would need recursive handling - for now, flat sub-annotations limited */
+} smali_annotation_elem_t;
+
+typedef struct {
+    int visibility;       /* 0=build, 1=runtime, 2=system */
+    char *type;           /* annotation type descriptor (e.g. Ljava/lang/Override;) */
+    smali_annotation_elem_t elems[MAX_ANNOT_ELEMS];
+    uint32_t elem_count;
+} smali_annotation_t;
+
 typedef struct {
     uint32_t access_flags;
     char *name;
     char *type;
     int has_init_value;
-    int value_type;        /* VALUE_TYPE_* */
-    int64_t value_int;     /* for int/long types */
-    double value_double;   /* for float/double */
-    char *value_str;       /* for string/type/enum/field/method refs */
-    uint32_t *array_vals;  /* for array encoded_values */
+    int value_type;
+    int64_t value_int;
+    double value_double;
+    char *value_str;
+    uint32_t *array_vals;
     uint32_t array_count;
+    smali_annotation_t annot;
+    int has_annot;
 } smali_field_def_t;
 
 typedef struct {
@@ -99,6 +129,10 @@ typedef struct {
     char **local_sigs;
     uint32_t *local_regs;
     uint32_t local_count;
+    smali_annotation_t annot;
+    int has_annot;
+    smali_annotation_t *param_annots;
+    uint32_t param_annot_count;
 } smali_method_def_t;
 
 typedef struct {
@@ -120,6 +154,10 @@ typedef struct {
     uint32_t virtual_method_count;
     uint32_t virtual_method_cap;
     uint32_t access_flags;
+    smali_annotation_t annots[MAX_ANNOTS];
+    uint32_t annot_count;
+    smali_annotation_t *field_annots;
+    uint32_t field_annot_count;
 } smali_class_def_t;
 
 typedef struct {

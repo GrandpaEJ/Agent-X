@@ -262,30 +262,52 @@ int parse_smali_file_content(smali_ctx_def_t *ctx, const char *text) {
                 }
                 free(name_sig);
             }
-        } else if (strcmp(tok, ".annotation") == 0) {
-            // Skip the entire annotation block
-            int depth = 1;
-            free(tok);
-            while (depth > 0 && *p) {
-                char *line_end_inner = strchr(p, '\n');
-                if (!line_end_inner) line_end_inner = p + strlen(p);
-                char *p_inner = p;
-                char *tok_inner = smali_next_token(&p_inner);
-                if (tok_inner) {
-                    if (strcmp(tok_inner, ".annotation") == 0) {
-                        depth++;
-                    } else if (strcmp(tok_inner, ".end") == 0) {
-                        char *next_inner = smali_next_token(&p_inner);
-                        if (next_inner && strcmp(next_inner, "annotation") == 0) {
-                            depth--;
-                        }
-                        if (next_inner) free(next_inner);
-                    }
-                    free(tok_inner);
-                }
-                p = line_end_inner;
-                if (*p == '\n') p++;
+        } else if (strcmp(tok, ".annotation") == 0 && curr) {
+            smali_annotation_t ann;
+            memset(&ann, 0, sizeof(ann));
+            ann.visibility = 1; /* default runtime */
+            char *vis_tok = smali_next_token(&p);
+            if (vis_tok) {
+                if (strcmp(vis_tok, "runtime") == 0) ann.visibility = 1;
+                else if (strcmp(vis_tok, "build") == 0) ann.visibility = 0;
+                else if (strcmp(vis_tok, "system") == 0) ann.visibility = 2;
+                else { ann.type = vis_tok; vis_tok = NULL; }
+                if (vis_tok) free(vis_tok);
             }
+            if (!ann.type) ann.type = smali_next_token(&p);
+            /* parse elements until .end annotation */
+            while (*p) {
+                while (*p == ' ' || *p == '\t' || *p == '\r' || *p == '\n') p++;
+                if (*p == '#') { char *nl = strchr(p, '\n'); p = nl ? nl + 1 : p + strlen(p); continue; }
+                char *elem_tok = smali_next_token(&p);
+                if (!elem_tok) break;
+                if (strcmp(elem_tok, ".end") == 0) { free(elem_tok); break; }
+                if (strcmp(elem_tok, ".subannotation") == 0) { free(elem_tok); continue; }
+                /* parse name = value pattern */
+                char *eq_tok = smali_next_token(&p);
+                if (eq_tok && strcmp(eq_tok, "=") == 0) {
+                    free(eq_tok);
+                    char *val_tok = smali_next_token(&p);
+                    smali_annotation_elem_t *el = &ann.elems[ann.elem_count];
+                    memset(el, 0, sizeof(*el));
+                    el->name = elem_tok;
+                    while (*p == ' ' || *p == '\t') p++;
+                    int is_quoted = (*p == '"');
+                    if (is_quoted) { el->value_type = VALUE_TYPE_STRING; el->value_str = val_tok; }
+                    else if (strcmp(val_tok, "null") == 0) { el->value_type = VALUE_TYPE_NULL; free(val_tok); }
+                    else if (strcmp(val_tok, "true") == 0) { el->value_type = VALUE_TYPE_BOOL; el->value_int = 1; free(val_tok); }
+                    else if (strcmp(val_tok, "false") == 0) { el->value_type = VALUE_TYPE_BOOL; el->value_int = 0; free(val_tok); }
+                    else { el->value_int = strtoll(val_tok, NULL, 0); el->value_type = VALUE_TYPE_INT; free(val_tok); }
+                    ann.elem_count++;
+                } else {
+                    if (eq_tok) free(eq_tok);
+                    free(elem_tok);
+                }
+            }
+            /* store annotation on the most recent context */
+            /* For simplicity, store on class-level for now */
+            curr->annots[0] = ann;
+            curr->annot_count = 1;
             continue;
         }
         int is_method = (strcmp(tok, ".method") == 0);

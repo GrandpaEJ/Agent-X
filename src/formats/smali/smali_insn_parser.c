@@ -388,29 +388,34 @@ int smali_parse_method_body(smali_ctx_def_t *ctx, smali_method_def_t *m, char **
             char *count_tok = smali_next_token(&start);
             if (count_tok) { m->registers_count = atoi(count_tok); free(count_tok); }
         } else if (strcmp(tok, ".annotation") == 0) {
-            // Skip the entire annotation block inside method
-            int depth = 1;
+            smali_annotation_t *ann = &m->annot;
+            memset(ann, 0, sizeof(*ann));
+            ann->visibility = 1;
             free(tok);
-            while (depth > 0 && *start) {
-                char *line_end_inner = strchr(start, '\n');
-                if (!line_end_inner) line_end_inner = start + strlen(start);
-                char *p_inner = start;
-                char *tok_inner = smali_next_token(&p_inner);
-                if (tok_inner) {
-                    if (strcmp(tok_inner, ".annotation") == 0) {
-                        depth++;
-                    } else if (strcmp(tok_inner, ".end") == 0) {
-                        char *next_inner = smali_next_token(&p_inner);
-                        if (next_inner && strcmp(next_inner, "annotation") == 0) {
-                            depth--;
-                        }
-                        if (next_inner) free(next_inner);
-                    }
-                    free(tok_inner);
-                }
-                start = line_end_inner;
-                if (*start == '\n') start++;
+            char *vis_tok = smali_next_token(&start);
+            if (vis_tok) {
+                if (strcmp(vis_tok, "runtime") == 0) ann->visibility = 1;
+                else if (strcmp(vis_tok, "build") == 0) ann->visibility = 0;
+                else if (strcmp(vis_tok, "system") == 0) ann->visibility = 2;
+                else { ann->type = vis_tok; vis_tok = NULL; }
+                if (vis_tok) free(vis_tok);
             }
+            if (!ann->type) ann->type = smali_next_token(&start);
+            while (*start) {
+                while (*start == ' ' || *start == '\t' || *start == '\r' || *start == '\n') start++;
+                if (*start == '#') { char *nl = strchr(start, '\n'); start = nl ? nl + 1 : start + strlen(start); continue; }
+                char *etok = smali_next_token(&start);
+                if (!etok) break;
+                if (strcmp(etok, ".end") == 0) { free(etok); break; }
+                free(etok);
+                char *eq_tok = smali_next_token(&start);
+                if (eq_tok && strcmp(eq_tok, "=") == 0) {
+                    free(eq_tok);
+                    char *val_tok = smali_next_token(&start);
+                    if (val_tok) free(val_tok);
+                } else if (eq_tok) free(eq_tok);
+            }
+            m->has_annot = 1;
             continue;
         } else if (strcmp(tok, ".locals") == 0) {
             char *count_tok = smali_next_token(&start);
