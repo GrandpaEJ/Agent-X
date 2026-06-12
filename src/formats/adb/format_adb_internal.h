@@ -51,5 +51,6 @@ void adb_disconnect(adb_conn *conn);
 int adb_open_service(adb_conn *conn, const char *service);
 int adb_write(adb_conn *conn, const void *data, size_t len);
 int adb_read(adb_conn *conn, void *buf, size_t *len);
+int read_next_msg(int fd, adb_msg *msg, uint8_t **payload);
 
 #endif

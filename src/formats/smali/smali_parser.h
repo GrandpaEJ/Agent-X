@@ -36,12 +36,34 @@ typedef struct {
     uint16_t payload_element_width;
 } smali_insn_t;
 
+#define VALUE_TYPE_INT    0
+#define VALUE_TYPE_LONG   1
+#define VALUE_TYPE_FLOAT  2
+#define VALUE_TYPE_DOUBLE 3
+#define VALUE_TYPE_STRING 4
+#define VALUE_TYPE_TYPE   5
+#define VALUE_TYPE_FIELD  6
+#define VALUE_TYPE_METHOD 7
+#define VALUE_TYPE_ENUM   8
+#define VALUE_TYPE_NULL   9
+#define VALUE_TYPE_BOOL   10
+#define VALUE_TYPE_BYTE   11
+#define VALUE_TYPE_SHORT  12
+#define VALUE_TYPE_CHAR   13
+#define VALUE_TYPE_ARRAY  14
+#define VALUE_TYPE_ANNOT  15
+
 typedef struct {
     uint32_t access_flags;
     char *name;
     char *type;
-    uint32_t init_value;
     int has_init_value;
+    int value_type;        /* VALUE_TYPE_* */
+    int64_t value_int;     /* for int/long types */
+    double value_double;   /* for float/double */
+    char *value_str;       /* for string/type/enum/field/method refs */
+    uint32_t *array_vals;  /* for array encoded_values */
+    uint32_t array_count;
 } smali_field_def_t;
 
 typedef struct {

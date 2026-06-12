@@ -150,41 +150,110 @@ Every single code change, refactoring step, or feature implementation **must foc
 
 ---
 
-## 7. DEX->Smali Baksmali Parity (In Progress)
+## 7. DEX⇄Smali Round-Trip Parity
 
-The native DEX->Smali disassembler is split into 4 focused files under `src/formats/dex/`:
-- `format_dex_smali_util.c` — shared utilities (aflags, sb, res, mproto, reg_name, uleb)
-- `format_dex_smali_annot.c` — annotation parsing with recursive encoded_value
-- `format_dex_smali_method.c` — method disassembly with dual label support
-- `format_dex_smali.c` — class-level orchestrator (thin, ~110 LOC)
+### 7a. DEX→Smali (Baksmali) — COMPLETE (113/113)
 
-Current baksmali parity: **28/113 classes identical** (up from initial 5).
+The native DEX→Smali disassembler is split into focused files under `src/formats/dex/`:
+- `format_dex_smali_util.c` — shared utilities (aflags, sb, res, mproto, reg_name, uleb, string escaping)
+- `format_dex_smali_annot.c` — annotation parsing with recursive encoded_value, blank line between items
+- `format_dex_smali_method.c` — method disassembly with try/catch, switch payloads, access$ comments, float hints
+- `format_dex_smali.c` — class-level orchestrator with static field initializers (encoded_value sign-ext, type 0x17 strings)
 
-### Completed
-- Section comments (`# static fields`, `# instance fields`, `# direct methods`, `# virtual methods`, `# interfaces`)
-- `constructor` keyword for `<clinit>`/`<init>` methods
-- Parameter register naming: `p0-N` for params, `v0-N` for locals (params at END of register range)
-- Rotating static buffer for multi-register instructions (prevents overwrite)
-- `0x%x` format for integer literals
-- Offset-based branch labels (`:cond_xx`, `:goto_xx`) with dual label support
-- Blank lines between instructions (suppressed before `.end method`)
-- Class-level annotation parsing (`@TargetApi`, `@Retention`, `@Override`)
-- Recursive `encoded_value` parsing for array annotations (`.enum` elements in `@Target`)
-- `.enum` prefix for enum-typed annotation values
-- `# interfaces` section with proper uint16 type_list parsing
-- `annotations_off` parsed from class_def_item (offset 20)
-- Blank lines between fields
-- Correct section spacing (2 blank lines between sections)
+**113/113 classes byte-identical** with `baksmali.jar` output.
 
-### Remaining (for full byte-identical output)
-1. **Static field initializers** — parse `static_values_off` (offset 28 in class_def_item) and `encoded_array_item` to output `= 0x...` for static final fields (R classes)
-2. **Method-level annotations** — need 4-space indent context (currently class-level only)
-3. **Parameter annotations** — `params_sz` in `annotations_directory_item` is ignored
-4. **Annotation spacing** — blank line between consecutive class-level annotations
+### 7b. Smali→DEX (Assembler) — Implementation Plan
 
-### Reference
-- Test APK: `apk/Current Activity_1.5.5_APKPure.apk` (113 classes)
-- Compare: `diff -rq /tmp/native_smali /tmp/baksmali_smali`
-- Official baksmali: `java -jar apk/baksmali.jar d apk/classes.dex -o /tmp/baksmali_smali`
-- Native: `./agent-x tool read_dex path=apk/classes.dex out_dir=/tmp/native_smali`
+The assembler exists at `src/formats/smali/` (~2,850 LOC) with a working pipeline but critical gaps. The goal is a perfect assembler matching `smali.jar` output — disassemble→assemble should produce byte-identical DEX.
+
+#### Phase 1: Bug Fixes & Critical Gaps (Foundation)
+
+| # | Task | Files | Priority | Notes |
+|---|------|-------|----------|-------|
+| 1.1 | Fix opcode 0x90 duplicate | `smali_insn_parser.c` | Critical | `0x90` listed as both `add-int` and `int-to-char`, linear lookup returns first match making `int-to-char` unreachable |
+| 1.2 | Fix const-string-jumbo kind | `smali_insn_parser.c` | Critical | kind=25 should be kind=1 (string reference) |
+| 1.3 | Enable debug info writing | `smali_writer.c` | High | `write_debug_info()` exists but `debug_info_off` hardcoded to 0 (line 456). Wire it up and emit `.line`/`.locals`/`.prologue`/`.epilogue` |
+| 1.4 | MUTF-8 string encoding | `smali_writer.c` | Critical | DEX requires Modified UTF-8 (`\0` → `0xC0 0x80`, supplementary chars as surrogate pairs). Currently writes raw C strings |
+| 1.5 | Static field initializer types | `smali_parser.c`, `smali_writer.c` | High | Only `int` initial values supported. Need: `null`, `boolean`, `byte`, `short`, `char`, `long`, `float`, `double`, `string`, `type`, `.enum`, `array` encoded values |
+| 1.6 | Annotation writing | `smali_parser.c`, `smali_writer.c` | High | `annotations_off` always 0. Need: `annotation_directory_item`, `annotation_set_item`, `annotation_item`, `annotation_set_ref_list` for class/field/method/param annotations |
+
+#### Phase 2: Annotation System (Full Correctness)
+
+| # | Task | Files | Notes |
+|---|------|-------|-------|
+| 2.1 | Parse `.annotation` blocks in smali_parser | `smali_parser.c` | Currently skipped entirely. Need `smali_annotation_t` struct with visibility, type, elements |
+| 2.2 | Parse annotation values (all types) | `smali_parser.c` | `.enum`, `.array`, sub-annotations, string/type/field/method refs |
+| 2.3 | Write `annotation_directory_item` | `smali_writer.c` | Per-class annotation directory with offsets to field/method/param/class annotation sets |
+| 2.4 | Write `annotation_set_item` + `annotation_item` | `smali_writer.c` | Encoded_annotation with ULEB128 type_idx + name/value pairs |
+| 2.5 | Write `annotation_set_ref_list` | `smali_writer.c` | For method parameter annotations |
+| 2.6 | Handle `system` vs `runtime` vs `build` visibility | `smali_parser.c` | Map to visibility byte (0=build, 1=runtime, 2=system) |
+
+#### Phase 3: Debug Info (Line Numbers + Locals)
+
+| # | Task | Files | Notes |
+|---|------|-------|-------|
+| 3.1 | Wire up `write_debug_info()` | `smali_writer.c` | Un-comment the call, set `debug_info_off` in code_item |
+| 3.2 | Emit line number state machine | `smali_writer.c` | `DBG_ADVANCE_LINE`, `DBG_ADVANCE_PC`, `DBG_START_LOCAL`, `DBG_END_LOCAL`, `DBG_END_SEQUENCE` |
+| 3.3 | Encode `.local` entries | `smali_writer.c` | `DBG_START_LOCAL` (name+type) and `DBG_START_LOCAL_EXTENDED` (name+type+signature) |
+| 3.4 | Encode `.param` entries | `smali_writer.c` | Parameter name strings |
+| 3.5 | Handle `.prologue`/`.epilogue` | `smali_writer.c` | `DBG_SET_PROLOGUE_END`, `DBG_SET_EPILOGUE_BEGIN` markers |
+
+#### Phase 4: DEX Validation & Correctness
+
+| # | Task | Files | Notes |
+|---|------|-------|-------|
+| 4.1 | Register range validation | `smali_encoder.c` | Warn/error on vA>255 (F_21c), vB>15 (F_12x), vA>65535 (F_22x), etc. |
+| 4.2 | Abstract/native methods → code_off=0 | `smali_writer.c` | Skip code_item for abstract/native methods, set `code_off = 0` in class_data |
+| 4.3 | String pool sort validation | `smali_pool.c` | Verify strict lexicographic ordering, reject duplicate strings |
+| 4.4 | Out/ins register computation | `smali_writer.c` | Verify `outs_size` from invoke instructions, compute `ins_size` from param count |
+| 4.5 | `align_4` between code items | `smali_writer.c` | Already done (commit a49aced). Verify padding is zero-filled |
+| 4.6 | SHA-1 and Adler-32 signing | `smali_writer.c` | Already exists in `smali_hash.c`. Verify header fields at offsets 0-31 |
+| 4.7 | `map_list` generation | `smali_writer.c` | Already written. Verify all section types are included and sorted by offset |
+| 4.8 | Byte-identical test harness | Test script | Assemble smali→DEX, then disassemble back. Both directions should be stable |
+
+#### Phase 5: Pool & Performance
+
+| # | Task | Files | Notes |
+|---|------|-------|-------|
+| 5.1 | Hash table for pool lookups | `smali_pool.c` | Replace O(n²) linear scans with hash table (string pool can be 10K+ entries) |
+| 5.2 | Type list deduplication | `smali_pool.c` | Deduplicate identical parameter type lists across proto IDs |
+| 5.3 | Memory cleanup | `smali.c` | Call `smali_pool_free()` and free class/method/field strings |
+| 5.4 | Error reporting | `smali_parser.c` | Add line numbers, syntax error messages, recovery |
+
+#### Phase 6: APK Rebuild Integration
+
+| # | Task | Files | Notes |
+|---|------|-------|-------|
+| 6.1 | AXML encoder | `format_axml.c` | Binary XML writer for AndroidManifest.xml |
+| 6.2 | resources.arsc encoder | `format_arsc.c` | Binary resource table writer |
+| 6.3 | APK rebuild pipeline | `format_apk.c` | smali→DEX + manifest + resources → ZIP → align → sign |
+| 6.4 | APK v1 signing | `crypto/sign.c` | JAR signing with SHA-1/SHA-256 digests |
+| 6.5 | zipalign | `format_zip_write.c` | 4-byte alignment for uncompressed entries |
+
+### Implementation Order
+
+**Phase 1** first (bugs + critical gaps), then **Phase 2** (annotations — blocks round-trip), then **Phase 3** (debug info), then **Phase 4** (validation), **Phase 5** (performance), **Phase 6** (APK rebuild).
+
+### Testing Strategy
+
+- Test DEX: `apk/classes.dex` (113 classes from TopActivity app)
+- Reference: `java -jar apk/baksmali.jar d classes.dex -o /tmp/ref`
+- Assemble: `./agent-x tool smali_assemble src_dir=/tmp/ref out_dex=/tmp/out.dex`
+- Verify: `java -jar apk/smali.jar a /tmp/ref -o /tmp/smali_out.dex && diff classes.dex /tmp/smali_out.dex`
+- Round-trip: disassemble→assemble→disassemble should be stable
+
+### Current Assembler File Map
+
+```
+src/formats/smali/
+├── smali.c              (34 LOC)  — Entry point: smali_assemble()
+├── smali_parser.c       (307 LOC) — .class/.field/.method parsing, instruction dispatch
+├── smali_lexer.c        (88 LOC)  — Tokenization, string literals, register parsing
+├── smali_insn_parser.c  (688 LOC) — Opcode table, instruction format parsing
+├── smali_encoder.c      (230 LOC) — Bytecode encoding (raw insn→uint16_t words)
+├── smali_pool.c          (437 LOC) — String/type/proto/field/method pool building+soring
+├── smali_writer.c        (1019 LOC) — DEX binary serialization (full layout)
+├── smali_hash.c          (49 LOC)  — Adler-32 + SHA-1
+└── smali_internal.h      (11 LOC)  — Internal declarations
+```
 
