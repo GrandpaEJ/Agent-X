@@ -65,56 +65,90 @@ static void mod_exp(uint32_t *result, const uint32_t *base,
 }
 
 // Parse PKCS#8 DER private key, extract n and d
+static int der_read_len(const uint8_t *der, size_t len, size_t *off) {
+    if (*off >= len) return -1;
+    uint8_t b = der[*off]; (*off)++;
+    if (!(b & 0x80)) return b;
+    int nbytes = b & 0x7F;
+    if (nbytes == 0 || nbytes > 4 || *off + nbytes > len) return -1;
+    int val = 0;
+    for (int i = 0; i < nbytes; i++) { val = (val << 8) | der[*off]; (*off)++; }
+    return val;
+}
+
 static int parse_pkcs8_der(const uint8_t *der, size_t len, rsa_key *key) {
-    // Skip to the RSA private key inside PKCS#8 wrapper
-    // PKCS#8: SEQUENCE { INTEGER(0), SEQUENCE { OID(rsaEncryption), NULL }, OCTET_STRING { RSAPrivateKey } }
+    // PKCS#8: SEQUENCE { INTEGER(0), SEQUENCE { OID, NULL }, OCTET_STRING { RSAPrivateKey } }
     // RSAPrivateKey: SEQUENCE { version, n, e, d, p, q, dp, dq, qinv }
-    if (len < 20 || der[0] != 0x30) return -1;
-    // Find the OCTET_STRING containing RSAPrivateKey
-    size_t off = 4;
-    while (off < len) {
-        if (der[off] == 0x04) { // OCTET_STRING
-            size_t slen = der[off + 1];
-            off += 2;
-            if (slen > 128) { slen = (slen & 0x7F) << 8 | der[off]; off++; }
-            if (off + slen <= len) {
-                const uint8_t *rsa = der + off;
-                size_t rslen = slen;
-                // RSAPrivateKey: SEQUENCE { INTEGER(0), INTEGER(n), INTEGER(e), INTEGER(d), ... }
-                if (rsa[0] != 0x30) return -1;
-                int idx = 2;
-                if (rsa[idx] & 0x80) idx += (rsa[idx] & 0x7F) + 1;
-                idx++; // skip version
-                // Read n
-                if (idx >= (int)rslen || rsa[idx] != 0x02) return -1;
-                int nlen = rsa[idx + 1]; idx += 2;
-                if (nlen > KEY_BYTES + 1) return -1;
-                memset(key->m, 0, sizeof(key->m));
-                if (rsa[idx] == 0) { idx++; nlen--; } // strip leading 0
-                for (int i = 0; i < nlen; i++) {
-                    key->m[(nlen - 1 - i) / 4] |= (uint32_t)rsa[idx + i] << ((i % 4) * 8);
-                }
-                key->bits = nlen * 8;
-                idx += nlen;
-                // Skip e
-                if (idx >= (int)rslen || rsa[idx] != 0x02) return -1;
-                int elen = rsa[idx + 1]; idx += 2 + elen;
-                // Read d
-                if (idx >= (int)rslen || rsa[idx] != 0x02) return -1;
-                int dlen = rsa[idx + 1]; idx += 2;
-                if (dlen > KEY_BYTES + 1) return -1;
-                memset(key->d, 0, sizeof(key->d));
-                if (rsa[idx] == 0) { idx++; dlen--; }
-                for (int i = 0; i < dlen; i++) {
-                    key->d[(dlen - 1 - i) / 4] |= (uint32_t)rsa[idx + i] << ((i % 4) * 8);
-                }
-                return 0;
-            }
-        }
-        off++; // minimal skip, good enough for typical PKCS8
-        if (off > len) break;
-    }
-    return -1;
+    if (len < 4 || der[0] != 0x30) return -1;
+    size_t off = 1;
+    int seqlen = der_read_len(der, len, &off);
+    if (seqlen < 0 || off + seqlen > len) return -1;
+
+    // Skip INTEGER(0)
+    if (off >= len || der[off] != 0x02) return -1;
+    off++;
+    int ilen = der_read_len(der, len, &off);
+    if (ilen < 0) return -1;
+    off += ilen;
+
+    // Skip algorithm SEQUENCE (OID + NULL)
+    if (off >= len || der[off] != 0x30) return -1;
+    off++;
+    int alen = der_read_len(der, len, &off);
+    if (alen < 0) return -1;
+    off += alen;
+
+    // Read OCTET_STRING containing RSAPrivateKey
+    if (off >= len || der[off] != 0x04) return -1;
+    off++;
+    int olen = der_read_len(der, len, &off);
+    if (olen < 0 || off + olen > len) return -1;
+    const uint8_t *rsa = der + off;
+    size_t rslen = olen;
+
+    // RSAPrivateKey: SEQUENCE
+    if (rslen < 2 || rsa[0] != 0x30) return -1;
+    size_t idx = 1;
+    int rsa_seqlen = der_read_len(rsa, rslen, &idx);
+    if (rsa_seqlen < 0 || idx + rsa_seqlen > rslen) return -1;
+
+    // Skip version INTEGER
+    if (idx >= rslen || rsa[idx] != 0x02) return -1;
+    idx++;
+    int vlen = der_read_len(rsa, rslen, &idx);
+    if (vlen < 0) return -1;
+    idx += vlen;
+
+    // Read n (INTEGER)
+    if (idx >= rslen || rsa[idx] != 0x02) return -1;
+    idx++;
+    int nlen = der_read_len(rsa, rslen, &idx);
+    if (nlen < 0 || nlen > KEY_BYTES + 1) return -1;
+    memset(key->m, 0, sizeof(key->m));
+    if (rsa[idx] == 0) { idx++; nlen--; }
+    for (int i = 0; i < nlen; i++)
+        key->m[(nlen - 1 - i) / 4] |= (uint32_t)rsa[idx + i] << ((i % 4) * 8);
+    key->bits = nlen * 8;
+    idx += nlen;
+
+    // Skip e (INTEGER)
+    if (idx >= rslen || rsa[idx] != 0x02) return -1;
+    idx++;
+    int elen = der_read_len(rsa, rslen, &idx);
+    if (elen < 0) return -1;
+    idx += elen;
+
+    // Read d (INTEGER)
+    if (idx >= rslen || rsa[idx] != 0x02) return -1;
+    idx++;
+    int dlen = der_read_len(rsa, rslen, &idx);
+    if (dlen < 0 || dlen > KEY_BYTES + 1) return -1;
+    memset(key->d, 0, sizeof(key->d));
+    if (rsa[idx] == 0) { idx++; dlen--; }
+    for (int i = 0; i < dlen; i++)
+        key->d[(dlen - 1 - i) / 4] |= (uint32_t)rsa[idx + i] << ((i % 4) * 8);
+
+    return 0;
 }
 
 int rsa_load_key(const char *path, rsa_key *key) {
@@ -138,32 +172,43 @@ int rsa_load_key(const char *path, rsa_key *key) {
     size_t b64len = end - b64;
 
     // Decode base64 to DER
-    static const char b64t[256] = {
-        ['A']=0,['B']=1,['C']=2,['D']=3,['E']=4,['F']=5,['G']=6,['H']=7,
-        ['I']=8,['J']=9,['K']=10,['L']=11,['M']=12,['N']=13,['O']=14,['P']=15,
-        ['Q']=16,['R']=17,['S']=18,['T']=19,['U']=20,['V']=21,['W']=22,['X']=23,
-        ['Y']=24,['Z']=25,['a']=26,['b']=27,['c']=28,['d']=29,['e']=30,['f']=31,
-        ['g']=32,['h']=33,['i']=34,['j']=35,['k']=36,['l']=37,['m']=38,['n']=39,
-        ['o']=40,['p']=41,['q']=42,['r']=43,['s']=44,['t']=45,['u']=46,['v']=47,
-        ['w']=48,['x']=49,['y']=50,['z']=51,['0']=52,['1']=53,['2']=54,['3']=55,
-        ['4']=56,['5']=57,['6']=58,['7']=59,['8']=60,['9']=61,['+']=62,['/']=63,
-    };
-    size_t der_len = b64len / 4 * 3;
-    uint8_t *der = malloc(der_len + 4);
-    int di = 0, val = 0, bits = -1;
+    static signed char b64t_init;
+    static signed char b64t[256];
+    if (!b64t_init) {
+        for (int i = 0; i < 256; i++) b64t[i] = -1;
+        b64t['A']=0; b64t['B']=1; b64t['C']=2; b64t['D']=3;
+        b64t['E']=4; b64t['F']=5; b64t['G']=6; b64t['H']=7;
+        b64t['I']=8; b64t['J']=9; b64t['K']=10; b64t['L']=11;
+        b64t['M']=12; b64t['N']=13; b64t['O']=14; b64t['P']=15;
+        b64t['Q']=16; b64t['R']=17; b64t['S']=18; b64t['T']=19;
+        b64t['U']=20; b64t['V']=21; b64t['W']=22; b64t['X']=23;
+        b64t['Y']=24; b64t['Z']=25; b64t['a']=26; b64t['b']=27;
+        b64t['c']=28; b64t['d']=29; b64t['e']=30; b64t['f']=31;
+        b64t['g']=32; b64t['h']=33; b64t['i']=34; b64t['j']=35;
+        b64t['k']=36; b64t['l']=37; b64t['m']=38; b64t['n']=39;
+        b64t['o']=40; b64t['p']=41; b64t['q']=42; b64t['r']=43;
+        b64t['s']=44; b64t['t']=45; b64t['u']=46; b64t['v']=47;
+        b64t['w']=48; b64t['x']=49; b64t['y']=50; b64t['z']=51;
+        b64t['0']=52; b64t['1']=53; b64t['2']=54; b64t['3']=55;
+        b64t['4']=56; b64t['5']=57; b64t['6']=58; b64t['7']=59;
+        b64t['8']=60; b64t['9']=61; b64t['+']=62; b64t['/']=63;
+        b64t_init = 1;
+    }
+    size_t est = b64len / 4 * 3 + 4;
+    uint8_t *der = malloc(est);
+    int di = 0, acc = 0, nb = 0;
     for (size_t i = 0; i < b64len; i++) {
         char c = b64[i];
-        if (c == '=') { val <<= 6; bits += 6; break; }
+        if (c == '=') { break; }
         int v = b64t[(unsigned char)c];
-        if (v == 0 && c != 'A') continue; // skip whitespace/newline
-        if (bits == -1) { val = v; bits = 0; }
-        else { val = (val << 6) | v; bits += 6; }
-        if (bits == 12) { der[di++] = val >> 4; val &= 0xF; bits = 4; }
-        if (bits == 18) { der[di++] = val >> 10; der[di++] = (val >> 2) & 0xFF; val &= 3; bits = 2; }
-        if (bits == 24) { der[di++] = val >> 16; der[di++] = (val >> 8) & 0xFF; der[di++] = val & 0xFF; bits = -1; }
+        if (v < 0) continue;
+        acc = (acc << 6) | v;
+        nb += 6;
+        if (nb >= 8) {
+            nb -= 8;
+            der[di++] = (acc >> nb) & 0xFF;
+        }
     }
-    if (bits >= 0 && di < (int)der_len) der[di++] = val >> (bits - 2);
-
     int ret = parse_pkcs8_der(der, di, key);
     free(der);
     free(buf);
@@ -191,12 +236,12 @@ int rsa_sign(const rsa_key *key, const uint8_t *hash, uint8_t *signature) {
     uint32_t base[MAX_LIMBS], result[MAX_LIMBS];
     memset(base, 0, sizeof(base));
     for (int i = 0; i < k; i++)
-        base[(k - 1 - i) / 4] |= (uint32_t)em[i] << ((i % 4) * 8);
+        base[(k - 1 - i) / 4] |= (uint32_t)em[i] << ((3 - (i % 4)) * 8);
 
     mod_exp(result, base, key->d, key->m, limbs);
     memset(signature, 0, k);
     for (int i = 0; i < k; i++)
-        signature[i] = (result[(k - 1 - i) / 4] >> ((i % 4) * 8)) & 0xFF;
+        signature[i] = (result[(k - 1 - i) / 4] >> ((3 - (i % 4)) * 8)) & 0xFF;
 
     free(em);
     return 0;
