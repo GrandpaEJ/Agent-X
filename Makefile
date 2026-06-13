@@ -8,7 +8,7 @@ LTO = -flto -ffunction-sections -fdata-sections
 CFLAGS = $(OPT) $(WARN) $(STD) $(INC) $(LTO)
 LDFLAGS = -Wl,--gc-sections -Wl,--strip-all $(LTO)
 
-SRC_DIRS = src src/core src/net src/tools src/formats src/formats/smali src/formats/zip src/formats/adb src/formats/axml src/formats/dex src/formats/apk src/crypto
+SRC_DIRS = src src/core src/net src/tools src/formats src/formats/zip src/android src/android/smali src/android/adb src/android/axml src/android/dex src/android/apk src/crypto
 VENDOR_DIR = vendor
 OBJ_DIR = obj
 
