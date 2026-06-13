@@ -146,7 +146,7 @@ Every single code change, refactoring step, or feature implementation **must foc
   * **1.x.x** : [Lts] (Long Term Support / Major Architectural Updates)
   * **x.n.x** : [new feat] (New features and backward-compatible additions)
   * **x.x.n** : [fixed] (Bug fixes and patches)
-* **Release Tags**: Every commit that updates the version inside the changelog must be tagged in git (e.g. `git tag v1.4.0`).
+* **Release Tags**: Every commit that updates the version inside the changelog must be tagged in git (e.g. `git tag v0.4.0`).
 
 ---
 

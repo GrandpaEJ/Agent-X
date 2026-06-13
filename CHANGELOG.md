@@ -12,7 +12,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
-## [1.4.0] - 2026-06-13
+## [0.4.0] - 2026-06-13
 
 ### Added
 - Initial Release of the Smali to DEX assembler (`smali_assemble` tool) with full round-trip parity.
@@ -29,7 +29,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
-## [1.3.1] - 2026-06-01
+## [0.3.1] - 2026-06-01
 
 ### Changed
 - Upgraded the 15 microstep todo tasks inside the `todo/` directory to align with memory mapping (`mmap`), zero-copy parsing, and strict `< 250 LOC` file limits.
@@ -37,7 +37,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
-## [1.3.0] - 2026-06-01
+## [0.3.0] - 2026-06-01
 
 ### Added
 - Integrated reverse engineering dynamic skills in `skills/re/` directory (`re_extract_apk`, `re_search_strings`, `re_analyze_elf`, `re_sign_apk`, and `re_zipalign`).
@@ -48,14 +48,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
-## [1.2.1] - 2026-06-01
+## [0.2.1] - 2026-06-01
 
 ### Changed
 - Added strict memory-first coding guidelines and semantic version tracking rule definitions to [AGENT.md](file:///home/grandpa/me/code/zig/agent-x/AGENT.md).
 
 ---
 
-## [1.2.0] - 2026-06-01
+## [0.2.0] - 2026-06-01
 
 
 ### Added
@@ -69,7 +69,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
-## [1.1.0] - 2026-05-15
+## [0.1.0] - 2026-05-15
 
 ### Added
 - Integrated system, network, git, text, and Android/Termux skills (69 scripts/schemas) into the dynamic skill engine.
@@ -79,7 +79,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
-## [1.0.0] - 2026-05-01
+## [0.0.0] - 2026-05-01
 
 ### Added
 - Initial release of Agent X (compiled rewrite in pure C11).
