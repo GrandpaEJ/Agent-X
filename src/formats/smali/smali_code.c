@@ -58,23 +58,28 @@ uint32_t write_code_item(smali_ctx_def_t *ctx, smali_buf_t *b, smali_method_def_
 
         for (uint32_t c_idx = 0; c_idx < m->catches_count; c_idx++) {
             smali_catch_t *ctch = &m->catches[c_idx];
+            int found_start = 0, found_end = 0, found_handler = 0;
             uint32_t start_addr = 0;
             uint32_t end_addr = 0;
             for (uint32_t j = 0; j < m->labels_count; j++) {
                 if (strcmp(m->labels[j].name, ctch->start_label) == 0) {
                     start_addr = insn_offsets[m->labels[j].offset];
+                    found_start = 1;
                 }
                 if (strcmp(m->labels[j].name, ctch->end_label) == 0) {
                     end_addr = insn_offsets[m->labels[j].offset];
+                    found_end = 1;
                 }
             }
             uint32_t handler_addr = 0;
             for (uint32_t j = 0; j < m->labels_count; j++) {
                 if (strcmp(m->labels[j].name, ctch->handler_label) == 0) {
                     handler_addr = insn_offsets[m->labels[j].offset];
+                    found_handler = 1;
                     break;
                 }
             }
+            if (!found_start || !found_end || !found_handler) continue;
             uint32_t type_idx = 0xFFFFFFFF;
             if (ctch->type) {
                 type_idx = smali_pool_find(&ctx->types, ctch->type);
@@ -135,7 +140,6 @@ uint32_t write_code_item(smali_ctx_def_t *ctx, smali_buf_t *b, smali_method_def_
     {
         uint32_t valid_count = 0;
         for (uint32_t r = 0; r < range_count; r++) {
-            if (ranges[r].start_addr == 0) continue;
             if (ranges[r].end_addr <= ranges[r].start_addr) continue;
             if (ranges[r].end_addr > code_words) continue;
             int valid_handlers = 1;
@@ -167,7 +171,6 @@ uint32_t write_code_item(smali_ctx_def_t *ctx, smali_buf_t *b, smali_method_def_
         {
             uint32_t valid_count = 0;
             for (uint32_t r = 0; r < range_count; r++) {
-                if (ranges[r].start_addr == 0) continue;
                 if (ranges[r].end_addr <= ranges[r].start_addr) continue;
                 if (ranges[r].end_addr > code_words) continue;
                 int valid_handlers = 1;

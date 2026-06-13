@@ -11,22 +11,24 @@
 #define MAX_ANNOT_ELEMS 32
 #define MAX_ANNOTS 32
 
-#define VALUE_TYPE_INT    0
-#define VALUE_TYPE_LONG   1
-#define VALUE_TYPE_FLOAT  2
-#define VALUE_TYPE_DOUBLE 3
-#define VALUE_TYPE_STRING 4
-#define VALUE_TYPE_TYPE   5
-#define VALUE_TYPE_FIELD  6
-#define VALUE_TYPE_METHOD 7
-#define VALUE_TYPE_ENUM   8
-#define VALUE_TYPE_NULL   9
-#define VALUE_TYPE_BOOL   10
-#define VALUE_TYPE_BYTE   11
-#define VALUE_TYPE_SHORT  12
-#define VALUE_TYPE_CHAR   13
-#define VALUE_TYPE_ARRAY  14
-#define VALUE_TYPE_ANNOT  15
+#define VALUE_TYPE_BYTE    0x00
+#define VALUE_TYPE_SHORT   0x02
+#define VALUE_TYPE_CHAR    0x03
+#define VALUE_TYPE_INT     0x04
+#define VALUE_TYPE_LONG    0x06
+#define VALUE_TYPE_FLOAT   0x10
+#define VALUE_TYPE_DOUBLE  0x11
+#define VALUE_TYPE_METHOD_TYPE 0x15
+#define VALUE_TYPE_METHOD_HANDLE 0x16
+#define VALUE_TYPE_STRING  0x17
+#define VALUE_TYPE_TYPE    0x18
+#define VALUE_TYPE_FIELD   0x19
+#define VALUE_TYPE_METHOD  0x1a
+#define VALUE_TYPE_ENUM    0x1b
+#define VALUE_TYPE_ARRAY   0x1c
+#define VALUE_TYPE_ANNOT   0x1d
+#define VALUE_TYPE_NULL    0x1e
+#define VALUE_TYPE_BOOL    0x1f
 
 typedef struct {
     char *name;
@@ -54,20 +56,27 @@ typedef struct {
     uint16_t payload_element_width;
 } smali_insn_t;
 
-typedef struct {
+typedef struct smali_annot_val smali_annot_val_t;
+
+typedef struct smali_annotation_elem {
     char *name;
     char *type;
     int value_type;
     int64_t value_int;
     double value_double;
     char *value_str;
-    uint32_t *array_types;
-    int64_t *array_ints;
-    char **array_strs;
+    smali_annot_val_t *arr_head;
+    smali_annot_val_t *arr_tail;
     uint32_t array_count;
     char *annot_type;
+    struct smali_annotation_elem *sub_elems;
     int annot_elem_count;
 } smali_annotation_elem_t;
+
+struct smali_annot_val {
+    smali_annot_val_t *next;
+    smali_annotation_elem_t elem;
+};
 
 typedef struct {
     int visibility;
@@ -123,8 +132,8 @@ typedef struct {
     char **local_sigs;
     uint32_t *local_regs;
     uint32_t local_count;
-    smali_annotation_t annot;
-    int has_annot;
+    smali_annotation_t annots[MAX_ANNOTS];
+    uint32_t annot_count;
     smali_annotation_t *param_annots;
     uint32_t param_annot_count;
 } smali_method_def_t;

@@ -513,7 +513,7 @@ int write_assembled_dex(smali_ctx_def_t *ctx, const char *out_dex) {
             uint32_t mc = mt ? c->virtual_method_count : c->direct_method_count;
             smali_method_def_t *ma = mt ? c->virtual_methods : c->direct_methods;
             for (uint32_t j = 0; j < mc; j++)
-                if (ma[j].has_annot) meth_annot_count++;
+                if (ma[j].annot_count > 0) meth_annot_count++;
         }
         if (!has_class_annot && meth_annot_count == 0) continue;
 
@@ -533,18 +533,25 @@ int write_assembled_dex(smali_ctx_def_t *ctx, const char *out_dex) {
             uint32_t mc = mt ? c->virtual_method_count : c->direct_method_count;
             smali_method_def_t *ma = mt ? c->virtual_methods : c->direct_methods;
             for (uint32_t j = 0; j < mc && mi < n_meth; j++) {
-                if (ma[j].has_annot) {
+                if (ma[j].annot_count > 0) {
                     char mkey[1024];
                     snprintf(mkey, sizeof(mkey), "%s->%s%s", c->descriptor, ma[j].name, ma[j].signature);
                     meth_keys[mi * 2] = smali_pool_find(&ctx->methods, mkey);
                     if (meth_keys[mi * 2] == 0xFFFFFFFF) meth_keys[mi * 2] = 0;
                     meth_keys[mi * 2 + 1] = b.len;
-                    buf_write_u32(&b, 1);
-                    uint32_t es = b.len; buf_write_u32(&b, 0);
-                    uint32_t io = b.len;
-                    buf_write_u8(&b, ma[j].annot.visibility);
-                    write_encoded_annotation(&b, ctx, &ma[j].annot);
-                    *(uint32_t *)(b.buf + es) = io;
+                    uint32_t ac = ma[j].annot_count > MAX_ANNOTS ? MAX_ANNOTS : ma[j].annot_count;
+                    buf_write_u32(&b, ac);
+                    uint32_t es = b.len;
+                    for (uint32_t ai = 0; ai < ac; ai++) buf_write_u32(&b, 0);
+                    for (uint32_t ai = 0; ai < ac; ai++) {
+                        uint32_t io = b.len;
+                        annot_item_count++;
+                        if (first_annot_item_off == 0 || b.len < first_annot_item_off)
+                            first_annot_item_off = b.len;
+                        buf_write_u8(&b, ma[j].annots[ai].visibility);
+                        write_encoded_annotation(&b, ctx, &ma[j].annots[ai]);
+                        *(uint32_t *)(b.buf + es + ai * 4) = io;
+                    }
                     mi++;
                 }
             }
