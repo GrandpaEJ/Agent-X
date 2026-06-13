@@ -195,6 +195,31 @@ uint32_t smali_encode_method_insns(smali_ctx_def_t *ctx, smali_method_def_t *m, 
         uint32_t vB = resolve_register(ins->vB, m->registers_count, m->ins_count);
         uint32_t vC = resolve_register(ins->vC, m->registers_count, m->ins_count);
 
+        if (ins->fmt == 1 || ins->fmt == 21 || ins->fmt == 2 || ins->fmt == 8 || ins->fmt == 10 || ins->fmt == 22) {
+            if (vA > 15 || (ins->fmt != 2 && vB > 15)) {
+                fprintf(stderr, "Error: register limit exceeded (v%u or v%u > 15) at line %d\n", vA, vB, ins->line_number);
+                exit(1);
+            }
+        }
+        if (ins->fmt == 3 || ins->fmt == 7 || ins->fmt == 19 || ins->fmt == 25 || ins->fmt == 9 || ins->fmt == 11 || ins->fmt == 12 || ins->fmt == 13 || ins->fmt == 16 || ins->fmt == 18 || ins->fmt == 26 || ins->fmt == 23) {
+            if (vA > 255) {
+                fprintf(stderr, "Error: register limit exceeded (v%u > 255) at line %d\n", vA, ins->line_number);
+                exit(1);
+            }
+        }
+        if (ins->fmt == 12 || ins->fmt == 13) {
+            if (vB > 255) {
+                fprintf(stderr, "Error: register limit exceeded (v%u > 255) at line %d\n", vB, ins->line_number);
+                exit(1);
+            }
+        }
+        if (ins->fmt == 13) {
+            if (vC > 255) {
+                fprintf(stderr, "Error: register limit exceeded (v%u > 255) at line %d\n", vC, ins->line_number);
+                exit(1);
+            }
+        }
+
         switch (ins->fmt) {
             case 0: // F_10x
                 w0 = ins->op; break;
@@ -236,6 +261,10 @@ uint32_t smali_encode_method_insns(smali_ctx_def_t *ctx, smali_method_def_t *m, 
                 uint32_t r2 = resolve_register(ins->regs[2], m->registers_count, m->ins_count);
                 uint32_t r3 = resolve_register(ins->regs[3], m->registers_count, m->ins_count);
                 uint32_t r4 = resolve_register(ins->regs[4], m->registers_count, m->ins_count);
+                if ((ins->vA > 0 && r0 > 15) || (ins->vA > 1 && r1 > 15) || (ins->vA > 2 && r2 > 15) || (ins->vA > 3 && r3 > 15) || (ins->vA > 4 && r4 > 15)) {
+                    fprintf(stderr, "Error: register limit exceeded (max v15) in invoke instruction at line %d\n", ins->line_number);
+                    exit(1);
+                }
                 w0 = ins->op | (ins->vA << 12) | ((r4 & 0xF) << 8);
                 w1 = (uint16_t)ref_idx;
                 w2 = (r0 & 0xF) | ((r1 & 0xF) << 4) | ((r2 & 0xF) << 8) | ((r3 & 0xF) << 12);

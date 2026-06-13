@@ -189,11 +189,37 @@ int write_assembled_dex(smali_ctx_def_t *ctx, const char *out_dex) {
             free(type_str);
         }
         if (pcount > 0) {
-            align_4(&b);
-            proto_param_offsets[i] = b.len;
-            buf_write_u32(&b, pcount);
-            for (uint32_t j = 0; j < pcount; j++) {
-                buf_write_u16(&b, ptypes[j]);
+            uint32_t existing_offset = 0;
+            for (uint32_t prev = 0; prev < i; prev++) {
+                if (proto_param_offsets[prev] != 0) {
+                    uint32_t off = proto_param_offsets[prev];
+                    uint32_t prev_count = *(uint32_t*)(b.buf + off);
+                    if (prev_count == pcount) {
+                        int match = 1;
+                        uint16_t *prev_types = (uint16_t*)(b.buf + off + 4);
+                        for (uint32_t k = 0; k < pcount; k++) {
+                            if (prev_types[k] != ptypes[k]) {
+                                match = 0;
+                                break;
+                            }
+                        }
+                        if (match) {
+                            existing_offset = off;
+                            break;
+                        }
+                    }
+                }
+            }
+
+            if (existing_offset != 0) {
+                proto_param_offsets[i] = existing_offset;
+            } else {
+                align_4(&b);
+                proto_param_offsets[i] = b.len;
+                buf_write_u32(&b, pcount);
+                for (uint32_t j = 0; j < pcount; j++) {
+                    buf_write_u16(&b, ptypes[j]);
+                }
             }
         } else {
             proto_param_offsets[i] = 0;
@@ -229,12 +255,22 @@ int write_assembled_dex(smali_ctx_def_t *ctx, const char *out_dex) {
         direct_code_ends[i] = c->direct_method_count ? malloc(c->direct_method_count * sizeof(uint32_t)) : NULL;
         virtual_code_ends[i] = c->virtual_method_count ? malloc(c->virtual_method_count * sizeof(uint32_t)) : NULL;
         for (uint32_t j = 0; j < c->direct_method_count; j++) {
-            direct_code_offsets[i][j] = write_code_item(ctx, &b, &c->direct_methods[j]);
-            direct_code_ends[i][j] = b.len;
+            if (c->direct_methods[j].access_flags & 0x0500) {
+                direct_code_offsets[i][j] = 0;
+                direct_code_ends[i][j] = b.len;
+            } else {
+                direct_code_offsets[i][j] = write_code_item(ctx, &b, &c->direct_methods[j]);
+                direct_code_ends[i][j] = b.len;
+            }
         }
         for (uint32_t j = 0; j < c->virtual_method_count; j++) {
-            virtual_code_offsets[i][j] = write_code_item(ctx, &b, &c->virtual_methods[j]);
-            virtual_code_ends[i][j] = b.len;
+            if (c->virtual_methods[j].access_flags & 0x0500) {
+                virtual_code_offsets[i][j] = 0;
+                virtual_code_ends[i][j] = b.len;
+            } else {
+                virtual_code_offsets[i][j] = write_code_item(ctx, &b, &c->virtual_methods[j]);
+                virtual_code_ends[i][j] = b.len;
+            }
         }
     }
     uint32_t code_section_end = 0;
