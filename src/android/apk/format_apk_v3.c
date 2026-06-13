@@ -12,12 +12,12 @@ static void put_u64(uint8_t **p, uint64_t v) { memcpy(*p, &v, 8); *p += 8; }
 static void put_bytes(uint8_t **p, const uint8_t *data, uint32_t len) { memcpy(*p, data, len); *p += len; }
 static void put_len_bytes(uint8_t **p, const uint8_t *data, uint32_t len) { put_u32(p, len); put_bytes(p, data, len); }
 
-uint8_t* generate_v2_pair(rsa_key *key, uint8_t *final_apk_digest, uint64_t *out_len) {
+uint8_t* generate_v3_pair(rsa_key *key, uint8_t *final_apk_digest, uint64_t *out_len) {
     uint32_t digests_len = 4 + 4 + 4 + 32; // 44
     uint32_t certs_len = 4 + cert_der_len; // 4 + cert
     uint32_t attr_len = 0; // 0
     
-    uint32_t signed_data_v2_len = (4 + digests_len) + (4 + certs_len) + (4 + attr_len);
+    uint32_t signed_data_v3_len = (4 + digests_len) + (4 + certs_len) + 4 + 4 + (4 + attr_len);
     
     uint32_t sig_algo_id = 0x0103;
     uint32_t sig_len = 256;
@@ -25,24 +25,24 @@ uint8_t* generate_v2_pair(rsa_key *key, uint8_t *final_apk_digest, uint64_t *out
     
     uint32_t pubkey_item_len = 4 + pubkey_der_len;
     
-    uint32_t signer_v2_len = (4 + signed_data_v2_len) + (4 + signatures_seq_len) + pubkey_item_len;
-    uint32_t signers_seq_v2_len = 4 + signer_v2_len;
-    uint64_t v2_id = 0x7109871a;
-    uint64_t v2_pair_len = 8 + 4 + 4 + signers_seq_v2_len; // 8 len + 4 ID + 4 seq_len + payload
+    uint32_t signer_v3_len = (4 + signed_data_v3_len) + 4 + 4 + (4 + signatures_seq_len) + pubkey_item_len;
+    uint32_t signers_seq_v3_len = 4 + signer_v3_len;
+    uint64_t v3_id = 0xf05368c0;
+    uint64_t v3_pair_len = 8 + 4 + 4 + signers_seq_v3_len;
     
-    *out_len = v2_pair_len;
-    uint8_t *pair = malloc(v2_pair_len);
+    *out_len = v3_pair_len;
+    uint8_t *pair = malloc(v3_pair_len);
     uint8_t *p = pair;
     
-    put_u64(&p, v2_pair_len - 8); // size of pair value (excluding size field)
-    put_u32(&p, v2_id);
-    put_u32(&p, signers_seq_v2_len);
-    put_u32(&p, signer_v2_len);
+    put_u64(&p, v3_pair_len - 8);
+    put_u32(&p, v3_id);
+    put_u32(&p, signers_seq_v3_len);
+    put_u32(&p, signer_v3_len);
     
-    put_u32(&p, signed_data_v2_len);
+    put_u32(&p, signed_data_v3_len);
     
-    // Build signed_data_v2 inside the pair buffer
-    uint8_t *sd_v2 = p;
+    // Build signed_data_v3 inside the pair buffer
+    uint8_t *sd_v3 = p;
     put_u32(&p, digests_len);
     put_u32(&p, 4 + 4 + 32);
     put_u32(&p, sig_algo_id);
@@ -51,19 +51,25 @@ uint8_t* generate_v2_pair(rsa_key *key, uint8_t *final_apk_digest, uint64_t *out
     put_u32(&p, certs_len);
     put_len_bytes(&p, cert_der, cert_der_len);
     
+    put_u32(&p, 24); // minSdk (Android 7.0)
+    put_u32(&p, 0x7fffffff); // maxSdk
+    
     put_u32(&p, attr_len);
     
     // Sign the signed data
     uint8_t rsa_hash[32];
-    sha256(sd_v2, signed_data_v2_len, rsa_hash);
-    uint8_t signature_v2[256];
-    rsa_sign_sha256(key, rsa_hash, signature_v2);
+    sha256(sd_v3, signed_data_v3_len, rsa_hash);
+    uint8_t signature_v3[256];
+    rsa_sign_sha256(key, rsa_hash, signature_v3);
     
     // Continue building pair
+    put_u32(&p, 24); // minSdk outside signed_data
+    put_u32(&p, 0x7fffffff); // maxSdk outside signed_data
+    
     put_u32(&p, signatures_seq_len);
     put_u32(&p, 4 + 4 + 256);
     put_u32(&p, sig_algo_id);
-    put_len_bytes(&p, signature_v2, 256);
+    put_len_bytes(&p, signature_v3, 256);
     put_len_bytes(&p, pubkey_der, pubkey_der_len);
     
     return pair;
