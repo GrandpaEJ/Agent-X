@@ -142,7 +142,7 @@ Agent-X automatically detects, registers, and executes the tool. LLM arguments a
 
 Agent-X is engineered for maximum efficiency. Below are the current benchmarks (v0.4.0) running on a standard Linux environment:
 
-- **Static Binary Size**: ~131 KB (Full build) / ~80 KB (Pico build)
+- **Static Binary Size**: ~167 KB (Full & Nano build)
 - **Base RAM Footprint (Idle)**: ~1.7 MB (RSS)
 - **Peak RAM (Smali Assembly)**: ~53 MB (Assembling 113 classes into a full `.dex` file)
 - **Execution Time (Assembly)**: ~0.12 seconds
