@@ -33,7 +33,16 @@ uint32_t write_code_item(smali_ctx_def_t *ctx, smali_buf_t *b, smali_method_def_
     align_4(b);
     uint32_t offset = b->len;
 
-    uint16_t *code_buf = malloc(m->insns_count * 3 * sizeof(uint16_t));
+    uint32_t max_units = m->insns_count * 6;
+    for (uint32_t i = 0; i < m->insns_count; i++) {
+        switch (m->insns[i].fmt) {
+            case 101: max_units += 4 + m->insns[i].payload_targets_count * 2; break;
+            case 102: max_units += 2 + m->insns[i].payload_targets_count * 4; break;
+            case 103: max_units += 2 + (m->insns[i].payload_data_len + 1) / 2 + 2; break;
+            default: break;
+        }
+    }
+    uint16_t *code_buf = malloc(max_units * sizeof(uint16_t));
     uint32_t code_words = smali_encode_method_insns(ctx, m, code_buf);
 
     write_try_range_t ranges[128];

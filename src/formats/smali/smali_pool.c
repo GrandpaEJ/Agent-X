@@ -338,6 +338,43 @@ void smali_pool_build_all(smali_ctx_def_t *ctx) {
                     smali_pool_add(&ctx->strings, el->value_str);
                 if (el->value_type == VALUE_TYPE_STRING && el->value_str)
                     smali_pool_add(&ctx->strings, el->value_str);
+                if (el->value_type == VALUE_TYPE_METHOD && el->value_str) {
+                    smali_pool_add(&ctx->methods, el->value_str);
+                    smali_pool_add(&ctx->strings, el->value_str);
+                    char *arrow = strstr(el->value_str, "->");
+                    if (arrow) {
+                        char *paren = strchr(arrow, '(');
+                        char *cls = strndup(el->value_str, arrow - el->value_str);
+                        smali_pool_add(&ctx->strings, cls);
+                        smali_pool_add(&ctx->types, cls);
+                        free(cls);
+                        if (paren) {
+                            char *name = strndup(arrow + 2, paren - (arrow + 2));
+                            smali_pool_add(&ctx->strings, name);
+                            add_sig_types(&ctx->strings, paren);
+                            add_shorty_string(&ctx->strings, paren);
+                            smali_pool_add(&ctx->protos, paren);
+                            free(name);
+                        }
+                    }
+                }
+                if (el->value_type == VALUE_TYPE_FIELD && el->value_str) {
+                    smali_pool_add(&ctx->fields, el->value_str);
+                    smali_pool_add(&ctx->strings, el->value_str);
+                    char *arrow = strstr(el->value_str, "->");
+                    if (arrow) {
+                        char *colon = strchr(arrow, ':');
+                        if (colon) {
+                            char *cls = strndup(el->value_str, arrow - el->value_str);
+                            char *name = strndup(arrow + 2, colon - (arrow + 2));
+                            char *typ = strdup(colon + 1);
+                            smali_pool_add(&ctx->strings, cls); smali_pool_add(&ctx->types, cls);
+                            smali_pool_add(&ctx->strings, name);
+                            smali_pool_add(&ctx->strings, typ); smali_pool_add(&ctx->types, typ);
+                            free(cls); free(name); free(typ);
+                        }
+                    }
+                }
                 if (el->value_type == VALUE_TYPE_ARRAY) {
                     smali_annot_val_t *node = el->arr_head;
                     while (node) {
@@ -347,6 +384,10 @@ void smali_pool_build_all(smali_ctx_def_t *ctx) {
                             smali_pool_add(&ctx->strings, node->elem.value_str);
                         if (node->elem.value_type == VALUE_TYPE_STRING && node->elem.value_str)
                             smali_pool_add(&ctx->strings, node->elem.value_str);
+                        if (node->elem.value_type == VALUE_TYPE_METHOD && node->elem.value_str)
+                            smali_pool_add(&ctx->methods, node->elem.value_str);
+                        if (node->elem.value_type == VALUE_TYPE_FIELD && node->elem.value_str)
+                            smali_pool_add(&ctx->fields, node->elem.value_str);
                         node = node->next;
                     }
                 }
@@ -363,18 +404,28 @@ void smali_pool_build_all(smali_ctx_def_t *ctx) {
             uint32_t mc = mt ? c->virtual_method_count : c->direct_method_count;
             smali_method_def_t *ma = mt ? c->virtual_methods : c->direct_methods;
             for (uint32_t j = 0; j < mc; j++) {
-                if (ma[j].annot_count > 0) {
-                    smali_annotation_t *a = &ma[j].annots[0];
-                    if (a->type) smali_pool_add(&ctx->strings, a->type);
-                    for (uint32_t k = 0; k < a->elem_count && k < MAX_ANNOT_ELEMS; k++) {
-                        smali_annotation_elem_t *el = &a->elems[k];
-                        if (el->name) smali_pool_add(&ctx->strings, el->name);
-                        if (el->value_type == VALUE_TYPE_ENUM && el->value_str)
-                            smali_pool_add(&ctx->strings, el->value_str);
-                        if (el->value_type == VALUE_TYPE_TYPE && el->value_str)
-                            smali_pool_add(&ctx->strings, el->value_str);
-                        if (el->value_type == VALUE_TYPE_STRING && el->value_str)
-                            smali_pool_add(&ctx->strings, el->value_str);
+if (ma[j].annot_count > 0) {
+                    for (uint32_t ai = 0; ai < ma[j].annot_count && ai < MAX_ANNOTS; ai++) {
+                        smali_annotation_t *a = &ma[j].annots[ai];
+                        if (a->type) smali_pool_add(&ctx->strings, a->type);
+                        for (uint32_t k = 0; k < a->elem_count && k < MAX_ANNOT_ELEMS; k++) {
+                            smali_annotation_elem_t *el = &a->elems[k];
+                            if (el->name) smali_pool_add(&ctx->strings, el->name);
+                            if (el->value_type == VALUE_TYPE_ENUM && el->value_str)
+                                smali_pool_add(&ctx->strings, el->value_str);
+                            if (el->value_type == VALUE_TYPE_TYPE && el->value_str)
+                                smali_pool_add(&ctx->strings, el->value_str);
+                            if (el->value_type == VALUE_TYPE_STRING && el->value_str)
+                                smali_pool_add(&ctx->strings, el->value_str);
+                            if (el->value_type == VALUE_TYPE_METHOD && el->value_str) {
+                                smali_pool_add(&ctx->methods, el->value_str);
+                                smali_pool_add(&ctx->strings, el->value_str);
+                            }
+                            if (el->value_type == VALUE_TYPE_FIELD && el->value_str) {
+                                smali_pool_add(&ctx->fields, el->value_str);
+                                smali_pool_add(&ctx->strings, el->value_str);
+                            }
+                        }
                     }
                 }
             }
@@ -558,6 +609,38 @@ void smali_pool_build_all(smali_ctx_def_t *ctx) {
                 }
                 if (el->value_type == VALUE_TYPE_TYPE && el->value_str)
                     smali_pool_add(&ctx->types, el->value_str);
+                if (el->value_type == VALUE_TYPE_METHOD && el->value_str) {
+                    smali_pool_add(&ctx->methods, el->value_str);
+                    char *ar = strstr(el->value_str, "->");
+                    if (ar) {
+                        char *cls = strndup(el->value_str, ar - el->value_str);
+                        smali_pool_add(&ctx->types, cls); smali_pool_add(&ctx->strings, cls);
+                        free(cls);
+                        char *paren = strchr(ar, '(');
+                        if (paren) {
+                            char *nm = strndup(ar + 2, paren - (ar + 2));
+                            smali_pool_add(&ctx->strings, nm);
+                            free(nm);
+                            smali_pool_add(&ctx->protos, paren);
+                            add_sig_types(&ctx->strings, paren);
+                            add_shorty_string(&ctx->strings, paren);
+                        }
+                    }
+                }
+                if (el->value_type == VALUE_TYPE_FIELD && el->value_str) {
+                    smali_pool_add(&ctx->fields, el->value_str);
+                    char *ar = strstr(el->value_str, "->");
+                    char *co = strrchr(el->value_str, ':');
+                    if (ar && co && co > ar) {
+                        char *cls = strndup(el->value_str, ar - el->value_str);
+                        char *typ = strndup(co + 1, strlen(co + 1));
+                        char *nm = strndup(ar + 2, co - (ar + 2));
+                        smali_pool_add(&ctx->types, cls); smali_pool_add(&ctx->strings, cls);
+                        smali_pool_add(&ctx->types, typ); smali_pool_add(&ctx->strings, typ);
+                        smali_pool_add(&ctx->strings, nm);
+                        free(cls); free(typ); free(nm);
+                    }
+                }
                 if (el->value_type == VALUE_TYPE_ARRAY) {
                     smali_annot_val_t *node = el->arr_head;
                     while (node) {
@@ -579,6 +662,22 @@ void smali_pool_build_all(smali_ctx_def_t *ctx) {
                         }
                         if (node->elem.value_type == VALUE_TYPE_TYPE && node->elem.value_str)
                             smali_pool_add(&ctx->types, node->elem.value_str);
+                        if (node->elem.value_type == VALUE_TYPE_METHOD && node->elem.value_str) {
+                            smali_pool_add(&ctx->methods, node->elem.value_str);
+                            char *ar = strstr(node->elem.value_str, "->");
+                            if (ar) {
+                                char *cls = strndup(node->elem.value_str, ar - node->elem.value_str);
+                                smali_pool_add(&ctx->types, cls); smali_pool_add(&ctx->strings, cls);
+                                free(cls);
+                                char *paren = strchr(ar, '(');
+                                if (paren) {
+                                    char *nm = strndup(ar + 2, paren - (ar + 2));
+                                    smali_pool_add(&ctx->strings, nm);
+                                    free(nm);
+                                    smali_pool_add(&ctx->protos, paren);
+                                }
+                            }
+                        }
                         node = node->next;
                     }
                 }
@@ -589,8 +688,10 @@ void smali_pool_build_all(smali_ctx_def_t *ctx) {
             smali_method_def_t *ma = mt ? c->virtual_methods : c->direct_methods;
             for (uint32_t j = 0; j < mc; j++) {
                 if (!ma[j].annot_count) continue;
-                for (uint32_t k = 0; k < ma[j].annots[0].elem_count && k < MAX_ANNOT_ELEMS; k++) {
-                    smali_annotation_elem_t *el = &ma[j].annots[0].elems[k];
+                for (uint32_t ai = 0; ai < ma[j].annot_count && ai < MAX_ANNOTS; ai++) {
+                smali_annotation_t *ann = &ma[j].annots[ai];
+                for (uint32_t k = 0; k < ann->elem_count && k < MAX_ANNOT_ELEMS; k++) {
+                    smali_annotation_elem_t *el = &ann->elems[k];
                     if (el->value_type == VALUE_TYPE_ENUM && el->value_str) {
                         smali_pool_add(&ctx->fields, el->value_str);
                         char *ar = strstr(el->value_str, "->");
@@ -609,7 +710,38 @@ void smali_pool_build_all(smali_ctx_def_t *ctx) {
                     }
                     if (el->value_type == VALUE_TYPE_TYPE && el->value_str)
                         smali_pool_add(&ctx->types, el->value_str);
+                    if (el->value_type == VALUE_TYPE_METHOD && el->value_str) {
+                        smali_pool_add(&ctx->methods, el->value_str);
+                        char *ar = strstr(el->value_str, "->");
+                        if (ar) {
+                            char *cls = strndup(el->value_str, ar - el->value_str);
+                            smali_pool_add(&ctx->types, cls); smali_pool_add(&ctx->strings, cls);
+                            free(cls);
+                            char *paren = strchr(ar, '(');
+                            if (paren) {
+                                char *nm = strndup(ar + 2, paren - (ar + 2));
+                                smali_pool_add(&ctx->strings, nm);
+                                free(nm);
+                                smali_pool_add(&ctx->protos, paren);
+                            }
+                        }
+                    }
+                    if (el->value_type == VALUE_TYPE_FIELD && el->value_str) {
+                        smali_pool_add(&ctx->fields, el->value_str);
+                        char *ar = strstr(el->value_str, "->");
+                        char *co = strrchr(el->value_str, ':');
+                        if (ar && co && co > ar) {
+                            char *cls = strndup(el->value_str, ar - el->value_str);
+                            char *typ = strndup(co + 1, strlen(co + 1));
+                            char *nm = strndup(ar + 2, co - (ar + 2));
+                            smali_pool_add(&ctx->types, cls); smali_pool_add(&ctx->strings, cls);
+                            smali_pool_add(&ctx->types, typ); smali_pool_add(&ctx->strings, typ);
+                            smali_pool_add(&ctx->strings, nm);
+                            free(cls); free(typ); free(nm);
+                        }
+                    }
                 }
+            }
             }
         }
     }

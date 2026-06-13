@@ -92,6 +92,24 @@ void write_encoded_value(smali_buf_t *b, smali_ctx_def_t *ctx, smali_annotation_
         for (int k = 0; k < nb; k++) buf_write_u8(b, (fidx >> (k * 8)) & 0xFF);
         break;
     }
+    case VALUE_TYPE_FIELD: {
+        uint32_t fidx = el->value_str ? smali_pool_find(&ctx->fields, el->value_str) : 0;
+        if (fidx == 0xFFFFFFFF) fidx = 0;
+        int nb = 2;
+        if (fidx > 0xFFFF) nb = 3;
+        buf_write_u8(b, ((nb - 1) << 5) | VALUE_TYPE_FIELD);
+        for (int k = 0; k < nb; k++) buf_write_u8(b, (fidx >> (k * 8)) & 0xFF);
+        break;
+    }
+    case VALUE_TYPE_METHOD: {
+        uint32_t midx = el->value_str ? smali_pool_find(&ctx->methods, el->value_str) : 0;
+        if (midx == 0xFFFFFFFF) midx = 0;
+        int nb = 2;
+        if (midx > 0xFFFF) nb = 3;
+        buf_write_u8(b, ((nb - 1) << 5) | VALUE_TYPE_METHOD);
+        for (int k = 0; k < nb; k++) buf_write_u8(b, (midx >> (k * 8)) & 0xFF);
+        break;
+    }
     case VALUE_TYPE_NULL:
         buf_write_u8(b, VALUE_TYPE_NULL);
         break;

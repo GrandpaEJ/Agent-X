@@ -50,8 +50,17 @@ void parse_annot_value(char **p, smali_annotation_elem_t *el) {
         return;
     }
     if (tok[0] == 'L' || tok[0] == '[') {
-        el->value_type = VALUE_TYPE_TYPE;
-        el->value_str = tok;
+        char *arrow = strstr(tok, "->");
+        if (arrow && strchr(arrow, '(')) {
+            el->value_type = VALUE_TYPE_METHOD;
+            el->value_str = tok;
+        } else if (arrow && strchr(arrow, ':')) {
+            el->value_type = VALUE_TYPE_FIELD;
+            el->value_str = tok;
+        } else {
+            el->value_type = VALUE_TYPE_TYPE;
+            el->value_str = tok;
+        }
         return;
     }
     if (strcmp(tok, ".subannotation") == 0) {
@@ -106,8 +115,8 @@ static uint32_t parse_access_flags(const char *tok) {
     if (strcmp(tok, "enum") == 0) return 0x4000;
     if (strcmp(tok, "constructor") == 0) return 0x10000;
     if (strcmp(tok, "declared-synchronized") == 0) return 0x20000;
-    if (strcmp(tok, "volatile") == 0) return 0x004000;
-    if (strcmp(tok, "transient") == 0) return 0x008000;
+    if (strcmp(tok, "volatile") == 0) return 0x0040;
+    if (strcmp(tok, "transient") == 0) return 0x0080;
     return 0;
 }
 
