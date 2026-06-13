@@ -36,7 +36,7 @@ typedef struct {
     uint32_t *attr_data;
 } axml_element;
 
-typedef struct {
+typedef struct axml_ctx {
     axml_strpool pool;
     axml_resmap resmap;
     int has_resmap;
