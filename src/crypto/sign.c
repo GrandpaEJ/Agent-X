@@ -92,3 +92,26 @@ char* generate_signature_file(const char *manifest, size_t manifest_len, size_t 
     *out_len = len;
     return sf;
 }
+
+#include "pkcs7_template.h" // contains pkcs7_template array (926 bytes)
+
+// Phase 4: Generate CERT.RSA (PKCS#7 block)
+char* generate_cert_rsa(const char *sf_data, size_t sf_len, rsa_key *key, size_t *out_len) {
+    uint8_t sf_hash[20];
+    sha1(sf_data, sf_len, sf_hash);
+
+    uint8_t signature[256];
+    if (rsa_sign(key, sf_hash, signature) != 0) {
+        return NULL;
+    }
+
+    size_t total_len = sizeof(pkcs7_template) + 256;
+    char *cert_rsa = malloc(total_len);
+    if (!cert_rsa) return NULL;
+
+    memcpy(cert_rsa, pkcs7_template, sizeof(pkcs7_template));
+    memcpy(cert_rsa + sizeof(pkcs7_template), signature, 256);
+
+    *out_len = total_len;
+    return cert_rsa;
+}
