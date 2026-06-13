@@ -10,7 +10,7 @@
 #include "agent.h"
 #include "logger.h"
 #include "formats.h"
-
+#include "crypto.h"
 static int is_path_safe(const char* path) {
     const char* restrict_env = getenv("SANDBOX_RESTRICT");
     if (!restrict_env || strcmp(restrict_env, "1") != 0) {
@@ -786,9 +786,25 @@ static char* execute_smali_assemble(cJSON* args) {
 static char* execute_resign_apk(cJSON* args) {
     cJSON* path_obj = cJSON_GetObjectItem(args, "path");
     if (!path_obj || !cJSON_IsString(path_obj)) return strdup("{\"error\": \"Missing path\"}");
-    char cmd[8192];
-    snprintf(cmd, sizeof(cmd), "jarsigner -keystore test.jks -storepass testpass -keypass testpass -signedjar \"%s.signed\" \"%s\" test", path_obj->valuestring, path_obj->valuestring);
-    return execute_run_command_from(cmd);
+    
+    char out_path[4096];
+    snprintf(out_path, sizeof(out_path), "%s.signed", path_obj->valuestring);
+
+    rsa_key key;
+    if (rsa_load_key("testkey.pem", &key) != 0) {
+        return strdup("{\"error\": \"Failed to load testkey.pem. Please ensure it exists in the working directory.\"}");
+    }
+
+    if (apk_sign_v1(path_obj->valuestring, out_path, &key) != 0) {
+        return strdup("{\"error\": \"Native APK signing failed\"}");
+    }
+
+    cJSON *res = cJSON_CreateObject();
+    cJSON_AddStringToObject(res, "status", "success");
+    cJSON_AddStringToObject(res, "output", out_path);
+    char *res_str = cJSON_PrintUnformatted(res);
+    cJSON_Delete(res);
+    return res_str;
 }
 
 static char* execute_run_command_from(const char *cmd) {

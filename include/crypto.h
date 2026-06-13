@@ -26,5 +26,6 @@ struct zip_archive;
 char* generate_manifest(struct zip_archive *za, size_t *out_len);
 char* generate_signature_file(const char *manifest, size_t manifest_len, size_t *out_len);
 char* generate_cert_rsa(const char *sf_data, size_t sf_len, rsa_key *key, size_t *out_len);
+int apk_sign_v1(const char *in_apk, const char *out_apk, rsa_key *key);
 
 #endif
