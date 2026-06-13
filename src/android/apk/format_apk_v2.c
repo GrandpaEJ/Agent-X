@@ -42,8 +42,9 @@ static void compute_chunked_hash(FILE *fp, size_t start, size_t end, sha256_ctx 
     free(chunk_buf);
 }
 
-// Generate APK Signing Block v2
-int apk_sign_v2(const char *in_apk, const char *out_apk, rsa_key *key) {
+// Generate APK Signing Block v2 and/or v3
+int apk_sign_v2_v3(const char *in_apk, const char *out_apk, rsa_key *key, int do_v2, int do_v3) {
+    if (!do_v2 && !do_v3) return -1;
     FILE *in = fopen(in_apk, "rb");
     if (!in) return -1;
     
@@ -92,7 +93,9 @@ int apk_sign_v2(const char *in_apk, const char *out_apk, rsa_key *key) {
     uint32_t digests_len = 4 + 4 + 4 + 32; // 44
     uint32_t certs_len = 4 + cert_der_len; // 4 + cert
     uint32_t attr_len = 0; // 0
-    uint32_t signed_data_len = (4 + digests_len) + (4 + certs_len) + (4 + attr_len);
+    
+    uint32_t signed_data_v2_len = (4 + digests_len) + (4 + certs_len) + (4 + attr_len);
+    uint32_t signed_data_v3_len = (4 + digests_len) + (4 + certs_len) + 4 + 4 + (4 + attr_len);
     
     uint32_t sig_algo_id = 0x0103;
     uint32_t sig_len = 256;
@@ -100,13 +103,20 @@ int apk_sign_v2(const char *in_apk, const char *out_apk, rsa_key *key) {
     
     uint32_t pubkey_item_len = 4 + pubkey_der_len;
     
-    uint32_t signer_len = (4 + signed_data_len) + (4 + signatures_seq_len) + pubkey_item_len;
-    uint32_t signers_seq_len = 4 + signer_len;
-    
+    uint32_t signer_v2_len = (4 + signed_data_v2_len) + (4 + signatures_seq_len) + pubkey_item_len;
+    uint32_t signers_seq_v2_len = 4 + signer_v2_len;
     uint64_t v2_id = 0x7109871a;
-    uint64_t v2_pair_len = 8 + 4 + 4 + signers_seq_len; // 8 bytes len + 4 bytes ID + 4 bytes seq_len + sequence payload
+    uint64_t v2_pair_len = 8 + 4 + 4 + signers_seq_v2_len; // 8 bytes len + 4 bytes ID + 4 bytes seq_len + sequence payload
     
-    uint64_t block_len = 8 + 8 + v2_pair_len + 16; // size + size + pair + magic
+    uint32_t signer_v3_len = (4 + signed_data_v3_len) + 4 + 4 + (4 + signatures_seq_len) + pubkey_item_len;
+    uint32_t signers_seq_v3_len = 4 + signer_v3_len;
+    uint64_t v3_id = 0xf05368c0;
+    uint64_t v3_pair_len = 8 + 4 + 4 + signers_seq_v3_len;
+    
+    uint64_t block_len = 8 + 8 + 16; // base size (size_field, size_field, magic)
+    if (do_v2) block_len += v2_pair_len;
+    if (do_v3) block_len += v3_pair_len;
+    
     uint64_t block_size_field = block_len - 8;
     
     // Hash EOCD with ORIGINAL CD offset (as it was before the block)
@@ -128,51 +138,88 @@ int apk_sign_v2(const char *in_apk, const char *out_apk, rsa_key *key) {
     sha256_final(&main_ctx, final_apk_digest);
     
     // Generate signed data
-    uint8_t *sd = malloc(signed_data_len);
-    uint8_t *p = sd;
+    uint8_t *sd_v2 = NULL, *sd_v3 = NULL;
+    uint8_t signature_v2[256], signature_v3[256];
     
-    put_u32(&p, digests_len);
-    put_u32(&p, 4 + 4 + 32);
-    put_u32(&p, sig_algo_id);
-    put_len_bytes(&p, final_apk_digest, 32);
+    if (do_v2) {
+        sd_v2 = malloc(signed_data_v2_len);
+        uint8_t *p2 = sd_v2;
+        put_u32(&p2, digests_len);
+        put_u32(&p2, 4 + 4 + 32);
+        put_u32(&p2, sig_algo_id);
+        put_len_bytes(&p2, final_apk_digest, 32);
+        
+        put_u32(&p2, certs_len);
+        put_len_bytes(&p2, cert_der, cert_der_len);
+        
+        put_u32(&p2, attr_len);
+        
+        uint8_t rsa_hash[32];
+        sha256(sd_v2, signed_data_v2_len, rsa_hash);
+        rsa_sign_sha256(key, rsa_hash, signature_v2);
+    }
     
-    put_u32(&p, certs_len);
-    put_len_bytes(&p, cert_der, cert_der_len);
-    
-    put_u32(&p, attr_len);
-    // no attributes
-    
-    // Sign the signed data
-    uint8_t signature[256];
-    
-    // v2 signature is over: signed_data payload
-    uint8_t rsa_hash[32];
-    sha256(sd, signed_data_len, rsa_hash);
-    rsa_sign_sha256(key, rsa_hash, signature);
+    if (do_v3) {
+        sd_v3 = malloc(signed_data_v3_len);
+        uint8_t *p3 = sd_v3;
+        put_u32(&p3, digests_len);
+        put_u32(&p3, 4 + 4 + 32);
+        put_u32(&p3, sig_algo_id);
+        put_len_bytes(&p3, final_apk_digest, 32);
+        
+        put_u32(&p3, certs_len);
+        put_len_bytes(&p3, cert_der, cert_der_len);
+        
+        put_u32(&p3, 24); // minSdk (Android 7.0)
+        put_u32(&p3, 0x7fffffff); // maxSdk
+        
+        put_u32(&p3, attr_len);
+        
+        uint8_t rsa_hash[32];
+        sha256(sd_v3, signed_data_v3_len, rsa_hash);
+        rsa_sign_sha256(key, rsa_hash, signature_v3);
+    }
     
     // Generate the block
     uint8_t *blk = malloc(block_len);
-    p = blk;
+    uint8_t *p = blk;
     put_u64(&p, block_size_field); // size of block excluding this field
-    put_u64(&p, v2_pair_len - 8); // size of pair value (excluding size field)
-    put_u32(&p, v2_id);
     
-    put_u32(&p, signers_seq_len);
-    put_u32(&p, signer_len);
+    if (do_v2) {
+        put_u64(&p, v2_pair_len - 8); // size of pair value (excluding size field)
+        put_u32(&p, v2_id);
+        put_u32(&p, signers_seq_v2_len);
+        put_u32(&p, signer_v2_len);
+        put_len_bytes(&p, sd_v2, signed_data_v2_len);
+        put_u32(&p, signatures_seq_len);
+        put_u32(&p, 4 + 4 + 256);
+        put_u32(&p, sig_algo_id);
+        put_len_bytes(&p, signature_v2, 256);
+        put_len_bytes(&p, pubkey_der, pubkey_der_len);
+    }
     
-    put_len_bytes(&p, sd, signed_data_len);
-    
-    put_u32(&p, signatures_seq_len);
-    put_u32(&p, 4 + 4 + 256);
-    put_u32(&p, sig_algo_id);
-    put_len_bytes(&p, signature, 256);
-    
-    put_len_bytes(&p, pubkey_der, pubkey_der_len);
+    if (do_v3) {
+        put_u64(&p, v3_pair_len - 8);
+        put_u32(&p, v3_id);
+        put_u32(&p, signers_seq_v3_len);
+        put_u32(&p, signer_v3_len);
+        put_len_bytes(&p, sd_v3, signed_data_v3_len);
+        
+        put_u32(&p, 24); // minSdk outside signed_data
+        put_u32(&p, 0x7fffffff); // maxSdk outside signed_data
+        
+        put_u32(&p, signatures_seq_len);
+        put_u32(&p, 4 + 4 + 256);
+        put_u32(&p, sig_algo_id);
+        put_len_bytes(&p, signature_v3, 256);
+        put_len_bytes(&p, pubkey_der, pubkey_der_len);
+    }
     
     put_u64(&p, block_size_field);
     put_bytes(&p, (const uint8_t*)"APK Sig Block 42", 16);
     
-    free(sd);
+    if (sd_v2) free(sd_v2);
+    if (sd_v3) free(sd_v3);
     
     // Write out the new APK
     FILE *out = fopen(out_apk, "wb");

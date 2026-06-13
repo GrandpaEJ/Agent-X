@@ -41,7 +41,7 @@ char* generate_manifest(zip_archive *za, size_t *out_len) {
 }
 
 // Phase 3: Generate CERT.SF
-char* generate_signature_file(const char *manifest, size_t manifest_len, size_t *out_len) {
+char* generate_signature_file(const char *manifest, size_t manifest_len, size_t *out_len, int do_v2, int do_v3) {
     size_t buf_cap = manifest_len + 512;
     char *sf = malloc(buf_cap);
     if (!sf) return NULL;
@@ -52,7 +52,14 @@ char* generate_signature_file(const char *manifest, size_t manifest_len, size_t 
     size_t b64_len = 0;
     char *man_b64 = base64_encode(man_hash, 20, &b64_len);
 
-    strcpy(sf, "Signature-Version: 1.0\r\nCreated-By: Agent-X\r\nX-Android-APK-Signed: 2\r\n");
+    strcpy(sf, "Signature-Version: 1.0\r\nCreated-By: Agent-X\r\n");
+    if (do_v2 && do_v3) {
+        strcat(sf, "X-Android-APK-Signed: 2, 3\r\n");
+    } else if (do_v3) {
+        strcat(sf, "X-Android-APK-Signed: 3\r\n");
+    } else if (do_v2) {
+        strcat(sf, "X-Android-APK-Signed: 2\r\n");
+    }
     size_t len = strlen(sf);
     
     len += snprintf(sf + len, buf_cap - len, "SHA1-Digest-Manifest: %s\r\n\r\n", man_b64);
@@ -117,7 +124,7 @@ char* generate_cert_rsa(const char *sf_data, size_t sf_len, rsa_key *key, size_t
 }
 
 // Phase 5: ZIP Injection (Full APK Signing process)
-int apk_sign_v1(const char *in_apk, const char *out_apk, rsa_key *key) {
+int apk_sign_v1(const char *in_apk, const char *out_apk, rsa_key *key, int do_v2, int do_v3) {
     zip_archive *za = zip_open(in_apk);
     if (!za) {
         printf("Failed to open input APK: %s\n", in_apk);
@@ -140,7 +147,7 @@ int apk_sign_v1(const char *in_apk, const char *out_apk, rsa_key *key) {
     }
 
     size_t sf_len = 0;
-    char *sf_data = generate_signature_file(mf_data, mf_len, &sf_len);
+    char *sf_data = generate_signature_file(mf_data, mf_len, &sf_len, do_v2, do_v3);
     if (!sf_data) {
         printf("Failed to generate CERT.SF\n");
         free(mf_data); zip_close(za); zip_writer_close(zw); return -1;

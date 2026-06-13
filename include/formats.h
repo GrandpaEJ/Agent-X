@@ -39,10 +39,10 @@ int smali_assemble(const char *src_dir, const char *out_dex);
 
 // APK
 #include "crypto.h"
-int apk_sign_v1(const char *in_apk, const char *out_apk, rsa_key *key);
-int apk_sign_v2(const char *in_apk, const char *out_apk, rsa_key *key);
+int apk_sign_v1(const char *in_apk, const char *out_apk, rsa_key *key, int do_v2, int do_v3);
+int apk_sign_v2_v3(const char *in_apk, const char *out_apk, rsa_key *key, int do_v2, int do_v3);
 char* generate_manifest(struct zip_archive *za, size_t *out_len);
-char* generate_signature_file(const char *manifest, size_t manifest_len, size_t *out_len);
+char* generate_signature_file(const char *manifest, size_t manifest_len, size_t *out_len, int do_v2, int do_v3);
 char* generate_cert_rsa(const char *sf_data, size_t sf_len, rsa_key *key, size_t *out_len);
 char *apk_analyze(const char *path);
 void apk_free(char *result);

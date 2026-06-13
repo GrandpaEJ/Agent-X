@@ -359,7 +359,7 @@ cJSON* tools_get_definitions(void) {
         "{\"type\": \"function\", \"function\": {\"name\": \"disasm_dex\", \"description\": \"Disassemble a DEX class to Smali\", \"parameters\": {\"type\": \"object\", \"properties\": {\"path\": {\"type\": \"string\", \"description\": \"Path to the DEX file\"}, \"class\": {\"type\": \"number\", \"description\": \"Class index to disassemble (default: 0)\"}}, \"required\": [\"path\"]}}},"
         "{\"type\": \"function\", \"function\": {\"name\": \"smali_assemble\", \"description\": \"Assemble smali directory into a DEX file\", \"parameters\": {\"type\": \"object\", \"properties\": {\"src_dir\": {\"type\": \"string\", \"description\": \"Path to smali source directory\"}, \"out_dex\": {\"type\": \"string\", \"description\": \"Output DEX file path\"}}, \"required\": [\"src_dir\", \"out_dex\"]}}},"
         "{\"type\": \"function\", \"function\": {\"name\": \"repack_apk\", \"description\": \"Repack contents of an extracted APK folder back into a ZIP/APK\", \"parameters\": {\"type\": \"object\", \"properties\": {\"dir\": {\"type\": \"string\", \"description\": \"Path to directory with APK contents\"}, \"output\": {\"type\": \"string\", \"description\": \"Output APK path\"}}, \"required\": [\"dir\", \"output\"]}}},"
-        "{\"type\": \"function\", \"function\": {\"name\": \"resign_apk\", \"description\": \"Resign an APK natively\", \"parameters\": {\"type\": \"object\", \"properties\": {\"path\": {\"type\": \"string\", \"description\": \"Path to the APK file to sign\"}, \"scheme\": {\"type\": \"string\", \"description\": \"Signing scheme (v1, v2). Default: v1. Example: v1,v2\"}}, \"required\": [\"path\"]}}}"
+        "{\"type\": \"function\", \"function\": {\"name\": \"resign_apk\", \"description\": \"Resign an APK natively\", \"parameters\": {\"type\": \"object\", \"properties\": {\"path\": {\"type\": \"string\", \"description\": \"Path to the APK file to sign\"}, \"scheme\": {\"type\": \"string\", \"description\": \"Signing scheme (v1, v2, v3). Default: v1. Example: v1,v2,v3\"}}, \"required\": [\"path\"]}}}"
         "]";
     cJSON* array = cJSON_Parse(schema);
     if (!array) return NULL;
@@ -799,22 +799,25 @@ static char* execute_resign_apk(cJSON* args) {
     const char *scheme = (scheme_obj && cJSON_IsString(scheme_obj)) ? scheme_obj->valuestring : "v1";
     int do_v1 = strstr(scheme, "v1") != NULL;
     int do_v2 = strstr(scheme, "v2") != NULL;
-    if (!do_v1 && !do_v2) do_v1 = 1; // default
+    int do_v3 = strstr(scheme, "v3") != NULL;
+    if (!do_v1 && !do_v2 && !do_v3) do_v1 = 1; // default
+    
+    int needs_v2_v3 = do_v2 || do_v3;
 
     char tmp_path[4096];
     snprintf(tmp_path, sizeof(tmp_path), "%s.tmp.apk", path_obj->valuestring);
     
     if (do_v1) {
-        if (apk_sign_v1(path_obj->valuestring, do_v2 ? tmp_path : out_path, &key) != 0) {
+        if (apk_sign_v1(path_obj->valuestring, needs_v2_v3 ? tmp_path : out_path, &key, do_v2, do_v3) != 0) {
             return strdup("{\"error\": \"Native APK v1 signing failed\"}");
         }
     }
     
-    if (do_v2) {
+    if (needs_v2_v3) {
         const char *in_file = do_v1 ? tmp_path : path_obj->valuestring;
-        if (apk_sign_v2(in_file, out_path, &key) != 0) {
+        if (apk_sign_v2_v3(in_file, out_path, &key, do_v2, do_v3) != 0) {
             if (do_v1) remove(tmp_path);
-            return strdup("{\"error\": \"Native APK v2 signing failed\"}");
+            return strdup("{\"error\": \"Native APK v2/v3 signing failed\"}");
         }
         if (do_v1) remove(tmp_path);
     }
