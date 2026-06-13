@@ -149,7 +149,7 @@ static void parse_attr_value(str_builder *pool, const char *val, uint8_t *out_ty
     
     if (strcmp(val, "true") == 0) {
         *out_type = 0x12; // TYPE_INT_BOOLEAN
-        *out_data = 1;
+        *out_data = 0xFFFFFFFF;
     } else if (strcmp(val, "false") == 0) {
         *out_type = 0x12;
         *out_data = 0;
@@ -284,10 +284,22 @@ static void encode_node(xml_doc *doc, xml_node *node, str_builder *pool, byte_bu
             attr = attr->next;
         }
         
-        // Sort attributes by name_idx
+        // Sort attributes by Resource ID, then by name_idx
         for (int i = 0; i < attr_count - 1; i++) {
             for (int j = i + 1; j < attr_count; j++) {
-                if ((uint32_t)e_attrs[i].name_idx > (uint32_t)e_attrs[j].name_idx) {
+                uint32_t id_i = e_attrs[i].name_idx != 0xFFFFFFFF ? get_res_id(pool->strings[e_attrs[i].name_idx]) : 0;
+                uint32_t id_j = e_attrs[j].name_idx != 0xFFFFFFFF ? get_res_id(pool->strings[e_attrs[j].name_idx]) : 0;
+                
+                int swap = 0;
+                if (id_i == 0 && id_j != 0) {
+                    swap = 1; // Items with no Resource ID go last
+                } else if (id_i != 0 && id_j != 0 && id_i > id_j) {
+                    swap = 1;
+                } else if (id_i == id_j && (uint32_t)e_attrs[i].name_idx > (uint32_t)e_attrs[j].name_idx) {
+                    swap = 1;
+                }
+                
+                if (swap) {
                     enc_attr tmp = e_attrs[i];
                     e_attrs[i] = e_attrs[j];
                     e_attrs[j] = tmp;
