@@ -8,7 +8,7 @@ LTO = -flto -ffunction-sections -fdata-sections
 CFLAGS = $(OPT) $(WARN) $(STD) $(INC) $(LTO)
 LDFLAGS = -Wl,--gc-sections -Wl,--strip-all $(LTO)
 
-SRC_DIRS = src src/formats src/formats/smali src/formats/zip src/formats/adb src/formats/axml src/formats/dex src/formats/apk src/crypto
+SRC_DIRS = src src/core src/net src/tools src/formats src/formats/smali src/formats/zip src/formats/adb src/formats/axml src/formats/dex src/formats/apk src/crypto
 VENDOR_DIR = vendor
 OBJ_DIR = obj
 
@@ -46,7 +46,7 @@ nano:
 
 pico:
 	$(CC) $(CFLAGS) -DPICO_MODE -o agent-x-pico \
-		src/main.c src/agent.c src/tools.c src/http.c src/logger.c \
+		src/core/main.c src/core/agent.c src/tools/tool_dispatch.c src/net/http.c src/core/logger.c \
 		$(VENDOR_DIR)/cJSON/cJSON.c $(LDFLAGS)
 
 clean:
