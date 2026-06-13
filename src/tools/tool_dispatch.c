@@ -790,9 +790,38 @@ static char* execute_resign_apk(cJSON* args) {
     char out_path[4096];
     snprintf(out_path, sizeof(out_path), "%s.signed", path_obj->valuestring);
 
+    cJSON* cert_obj = cJSON_GetObjectItem(args, "cert");
+    cJSON* key_obj = cJSON_GetObjectItem(args, "key");
+    const char *cert_path = (cert_obj && cJSON_IsString(cert_obj)) ? cert_obj->valuestring : NULL;
+    const char *key_path = (key_obj && cJSON_IsString(key_obj)) ? key_obj->valuestring : "testkey.pem";
+
     rsa_key key;
-    if (rsa_load_key("testkey.pem", &key) != 0) {
-        return strdup("{\"error\": \"Failed to load testkey.pem. Please ensure it exists in the working directory.\"}");
+    if (rsa_load_key(key_path, &key) != 0) {
+        char err[512];
+        snprintf(err, sizeof(err), "{\"error\": \"Failed to load private key: %s\"}", key_path);
+        return strdup(err);
+    }
+    
+    uint8_t *custom_cert = NULL;
+    size_t custom_cert_len = 0;
+    
+    if (cert_path) {
+        FILE *f = fopen(cert_path, "rb");
+        if (f) {
+            fseek(f, 0, SEEK_END);
+            custom_cert_len = ftell(f);
+            fseek(f, 0, SEEK_SET);
+            custom_cert = malloc(custom_cert_len);
+            if (custom_cert) {
+                size_t read_bytes = fread(custom_cert, 1, custom_cert_len, f);
+                (void)read_bytes;
+            }
+            fclose(f);
+        } else {
+            char err[512];
+            snprintf(err, sizeof(err), "{\"error\": \"Failed to load custom certificate: %s\"}", cert_path);
+            return strdup(err);
+        }
     }
 
     cJSON* scheme_obj = cJSON_GetObjectItem(args, "scheme");
@@ -801,6 +830,14 @@ static char* execute_resign_apk(cJSON* args) {
     int do_v2 = strstr(scheme, "v2") != NULL;
     int do_v3 = strstr(scheme, "v3") != NULL;
     if (!do_v1 && !do_v2 && !do_v3) do_v1 = 1; // default
+    
+    if (custom_cert && do_v1) {
+        printf("[WARN] V1 signing does not currently support dynamic certificates. Disabling V1 and using V2/V3 only.\n");
+        do_v1 = 0;
+        if (!do_v2 && !do_v3) {
+            do_v2 = 1; // default to v2 if they requested custom key without schemes
+        }
+    }
     
     int needs_v2_v3 = do_v2 || do_v3;
 
@@ -815,12 +852,15 @@ static char* execute_resign_apk(cJSON* args) {
     
     if (needs_v2_v3) {
         const char *in_file = do_v1 ? tmp_path : path_obj->valuestring;
-        if (apk_sign_v2_v3(in_file, out_path, &key, do_v2, do_v3) != 0) {
+        if (apk_sign_v2_v3(in_file, out_path, &key, do_v2, do_v3, custom_cert, custom_cert_len) != 0) {
+            if (custom_cert) free(custom_cert);
             if (do_v1) remove(tmp_path);
             return strdup("{\"error\": \"Native APK v2/v3 signing failed\"}");
         }
         if (do_v1) remove(tmp_path);
     }
+    
+    if (custom_cert) free(custom_cert);
 
     cJSON *res = cJSON_CreateObject();
     cJSON_AddStringToObject(res, "status", "success");

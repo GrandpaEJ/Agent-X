@@ -6,8 +6,8 @@
 #include "formats.h"
 
 // Forward declarations of our separated pair generators
-uint8_t* generate_v2_pair(rsa_key *key, uint8_t *apk_digest, uint64_t *out_len);
-uint8_t* generate_v3_pair(rsa_key *key, uint8_t *apk_digest, uint64_t *out_len);
+uint8_t* generate_v2_pair(rsa_key *key, uint8_t *apk_digest, uint64_t *out_len, const uint8_t *cert, uint32_t cert_len, const uint8_t *pubkey, uint32_t pubkey_len);
+uint8_t* generate_v3_pair(rsa_key *key, uint8_t *apk_digest, uint64_t *out_len, const uint8_t *cert, uint32_t cert_len, const uint8_t *pubkey, uint32_t pubkey_len);
 
 static void put_u64(uint8_t **p, uint64_t v) { memcpy(*p, &v, 8); *p += 8; }
 static void put_bytes(uint8_t **p, const uint8_t *data, uint32_t len) { memcpy(*p, data, len); *p += len; }
@@ -43,8 +43,31 @@ static void compute_chunked_hash(FILE *fp, size_t start, size_t end, sha256_ctx 
     free(chunk_buf);
 }
 
+static uint8_t* extract_pubkey_from_cert(const uint8_t *cert, size_t cert_len, size_t *out_pubkey_len) {
+    const uint8_t oid[] = {0x06, 0x09, 0x2a, 0x86, 0x48, 0x86, 0xf7, 0x0d, 0x01, 0x01, 0x01};
+    for (size_t i = 0; i < cert_len - sizeof(oid); i++) {
+        if (memcmp(cert + i, oid, sizeof(oid)) == 0) {
+            for (int j = i; j >= 0; j--) {
+                if (cert[j] == 0x30 && cert[j+1] == 0x82) {
+                    size_t seq_len = (cert[j+2] << 8) | cert[j+3];
+                    if (j + 4 + seq_len <= cert_len && i >= j && i < j + 4 + seq_len) {
+                        *out_pubkey_len = 4 + seq_len;
+                        uint8_t *pubkey = malloc(*out_pubkey_len);
+                        memcpy(pubkey, cert + j, *out_pubkey_len);
+                        return pubkey;
+                    }
+                }
+            }
+        }
+    }
+    return NULL;
+}
+
+#include "cert_der.h"
+#include "pubkey_der.h"
+
 // Generate APK Signing Block v2 and/or v3
-int apk_sign_v2_v3(const char *in_apk, const char *out_apk, rsa_key *key, int do_v2, int do_v3) {
+int apk_sign_v2_v3(const char *in_apk, const char *out_apk, rsa_key *key, int do_v2, int do_v3, const uint8_t *custom_cert, uint32_t custom_cert_len) {
     if (!do_v2 && !do_v3) return -1;
     FILE *in = fopen(in_apk, "rb");
     if (!in) return -1;
@@ -102,11 +125,30 @@ int apk_sign_v2_v3(const char *in_apk, const char *out_apk, rsa_key *key, int do
     uint8_t final_apk_digest[32];
     sha256_final(&main_ctx, final_apk_digest);
     
+    const uint8_t *use_cert = cert_der;
+    uint32_t use_cert_len = cert_der_len;
+    const uint8_t *use_pubkey = pubkey_der;
+    uint32_t use_pubkey_len = pubkey_der_len;
+    uint8_t *extracted_pubkey = NULL;
+    
+    if (custom_cert && custom_cert_len > 0) {
+        use_cert = custom_cert;
+        use_cert_len = custom_cert_len;
+        size_t e_len;
+        extracted_pubkey = extract_pubkey_from_cert(custom_cert, custom_cert_len, &e_len);
+        if (extracted_pubkey) {
+            use_pubkey = extracted_pubkey;
+            use_pubkey_len = e_len;
+        }
+    }
+    
     uint8_t *v2_pair = NULL, *v3_pair = NULL;
     uint64_t v2_len = 0, v3_len = 0;
     
-    if (do_v2) v2_pair = generate_v2_pair(key, final_apk_digest, &v2_len);
-    if (do_v3) v3_pair = generate_v3_pair(key, final_apk_digest, &v3_len);
+    if (do_v2) v2_pair = generate_v2_pair(key, final_apk_digest, &v2_len, use_cert, use_cert_len, use_pubkey, use_pubkey_len);
+    if (do_v3) v3_pair = generate_v3_pair(key, final_apk_digest, &v3_len, use_cert, use_cert_len, use_pubkey, use_pubkey_len);
+    
+    if (extracted_pubkey) free(extracted_pubkey);
     
     uint64_t block_len = 8 + 8 + 16;
     if (do_v2) block_len += v2_len;

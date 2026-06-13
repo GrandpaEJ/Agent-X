@@ -4,17 +4,17 @@
 #include <string.h>
 #include "crypto.h"
 #include "formats.h"
-#include "cert_der.h"
-#include "pubkey_der.h"
+#include "crypto.h"
+#include "formats.h"
 
 static void put_u32(uint8_t **p, uint32_t v) { memcpy(*p, &v, 4); *p += 4; }
 static void put_u64(uint8_t **p, uint64_t v) { memcpy(*p, &v, 8); *p += 8; }
 static void put_bytes(uint8_t **p, const uint8_t *data, uint32_t len) { memcpy(*p, data, len); *p += len; }
 static void put_len_bytes(uint8_t **p, const uint8_t *data, uint32_t len) { put_u32(p, len); put_bytes(p, data, len); }
 
-uint8_t* generate_v3_pair(rsa_key *key, uint8_t *final_apk_digest, uint64_t *out_len) {
+uint8_t* generate_v3_pair(rsa_key *key, uint8_t *final_apk_digest, uint64_t *out_len, const uint8_t *cert, uint32_t cert_len, const uint8_t *pubkey, uint32_t pubkey_len) {
     uint32_t digests_len = 4 + 4 + 4 + 32; // 44
-    uint32_t certs_len = 4 + cert_der_len; // 4 + cert
+    uint32_t certs_len = 4 + cert_len; // 4 + cert
     uint32_t attr_len = 0; // 0
     
     uint32_t signed_data_v3_len = (4 + digests_len) + (4 + certs_len) + 4 + 4 + (4 + attr_len);
@@ -23,7 +23,7 @@ uint8_t* generate_v3_pair(rsa_key *key, uint8_t *final_apk_digest, uint64_t *out
     uint32_t sig_len = 256;
     uint32_t signatures_seq_len = 4 + 4 + 4 + sig_len; // 268
     
-    uint32_t pubkey_item_len = 4 + pubkey_der_len;
+    uint32_t pubkey_item_len = 4 + pubkey_len;
     
     uint32_t signer_v3_len = (4 + signed_data_v3_len) + 4 + 4 + (4 + signatures_seq_len) + pubkey_item_len;
     uint32_t signers_seq_v3_len = 4 + signer_v3_len;
@@ -49,7 +49,7 @@ uint8_t* generate_v3_pair(rsa_key *key, uint8_t *final_apk_digest, uint64_t *out
     put_len_bytes(&p, final_apk_digest, 32);
     
     put_u32(&p, certs_len);
-    put_len_bytes(&p, cert_der, cert_der_len);
+    put_len_bytes(&p, cert, cert_len);
     
     put_u32(&p, 24); // minSdk (Android 7.0)
     put_u32(&p, 0x7fffffff); // maxSdk
@@ -70,7 +70,7 @@ uint8_t* generate_v3_pair(rsa_key *key, uint8_t *final_apk_digest, uint64_t *out
     put_u32(&p, 4 + 4 + 256);
     put_u32(&p, sig_algo_id);
     put_len_bytes(&p, signature_v3, 256);
-    put_len_bytes(&p, pubkey_der, pubkey_der_len);
+    put_len_bytes(&p, pubkey, pubkey_len);
     
     return pair;
 }
