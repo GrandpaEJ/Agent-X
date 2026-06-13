@@ -52,7 +52,7 @@ char* generate_signature_file(const char *manifest, size_t manifest_len, size_t 
     size_t b64_len = 0;
     char *man_b64 = base64_encode(man_hash, 20, &b64_len);
 
-    strcpy(sf, "Signature-Version: 1.0\r\nCreated-By: Agent-X\r\n");
+    strcpy(sf, "Signature-Version: 1.0\r\nCreated-By: Agent-X\r\nX-Android-APK-Signed: 2\r\n");
     size_t len = strlen(sf);
     
     len += snprintf(sf + len, buf_cap - len, "SHA1-Digest-Manifest: %s\r\n\r\n", man_b64);
