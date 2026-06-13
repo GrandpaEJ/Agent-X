@@ -302,6 +302,7 @@ int parse_smali_file_content(smali_ctx_def_t *ctx, const char *text) {
                         }
                         field = &curr->instance_fields[curr->instance_field_count++];
                     }
+                    memset(field, 0, sizeof(smali_field_def_t));
                     uint64_t init_val = 0;
                     int has_init = 0;
                     char *init_string = NULL;
