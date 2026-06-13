@@ -1,21 +1,53 @@
-# Agent X Pro
-
-Agent X Pro is a production-grade, ultra-lightweight autonomous AI agent written in pure C11. Operating with an extremely tiny RAM footprint (< 500 KB) and compiling to a static binary with zero dynamic library dependencies, it is optimized for high-performance daemonization on VPS, Debian/Ubuntu servers, and Termux (Android).
+<div align="center">
+  <h1 align="center">Agent X Pro 🚀</h1>
+  <p align="center">
+    <strong>An Ultra-Lightweight, Zero-Dependency Autonomous AI Agent & Native Android Reverse Engineering Suite built in Pure C11</strong>
+  </p>
+  <p align="center">
+    <a href="#-key-features">Key Features</a> •
+    <a href="#-quick-start">Quick Start</a> •
+    <a href="#-documentation">Documentation</a> •
+    <a href="CHANGELOG.md">Changelog</a> •
+    <a href="CONTRIBUTING.md">Contributing</a>
+  </p>
+</div>
 
 ---
 
-## Key Capabilities
+## ⚡ Overview
 
-1. **Dynamic Skill Engine**: Register and run new tools dynamically by dropping JSON schemas (`skills/<name>.json`) and scripts (`skills/<name>.sh` or `.py`) into the `skills/` directory—no recompilation needed.
-2. **Persistent Memory Store (RAG)**: Uses a lightweight file-based keyword database for long-term fact serialization (`memorize` and `recall` tools).
-3. **Dynamic Context Truncation**: Strips large tool outputs from conversation logs older than 3 turns to optimize context length and slash input token costs by up to 70%.
-4. **POSIX Daemonization**: Fully daemonizes background Telegram bots via double-forking (`--daemon` flag), mapping PID files and structured log files.
-5. **Structured JSON Auditing**: Outputs diagnostic JSON logs to `agent-x.log` for easy troubleshooting.
-6. **Multi-Session Isolation**: Automatically isolates and persists individual chat sessions by Telegram `chat_id` and CLI.
+**Agent X Pro** is a production-grade, autonomous AI agent written from scratch in pure C11. Operating with an extremely tiny RAM footprint (< 500 KB) and compiling to a static binary with **zero dynamic library dependencies**, it is highly optimized for deployment on VPS, Debian/Ubuntu servers, and Termux (Android).
 
----
+Beyond being an AI orchestrator, Agent X Pro is also a **Full-Fledged Native Android Reverse Engineering Suite**. It features a high-performance Dalvik Smali compiler and DEX parser, enabling Android APK modifications without requiring any Java/JDK installations.
 
-## Configuration (`.env`)
+## 🌟 Key Features
+
+### 🧠 Autonomous AI Orchestration
+- **Dynamic Skill Engine**: Register new tools dynamically by dropping JSON schemas (`skills/<name>.json`) and executable scripts into the `skills/` directory—no recompilation needed!
+- **Persistent Memory Store (RAG)**: Employs a lightweight file-based keyword database for long-term fact serialization using `memorize` and `recall`.
+- **Dynamic Context Truncation**: Automatically strips large tool outputs from logs older than 3 turns to optimize context length, slashing LLM input token costs by up to 70%.
+- **Multi-Session Isolation**: Isolates and persists individual chat sessions by CLI and Telegram `chat_id`.
+
+### 🚀 High-Performance Daemonization
+- **POSIX Daemonization**: Fully daemonizes background Telegram bots via double-forking (`--daemon` flag).
+- **Process Management**: Automatically maps PID files (`agent-x.pid`) and outputs structured diagnostic JSON logs (`agent-x.log`) for easy monitoring.
+
+### 📱 Zero-Java Android Reverse Engineering
+Agent X Pro includes an embedded, high-performance Dalvik compiler and DEX parser cleanly isolated inside `src/android/`:
+- **Smali Assembler**: Assemble `.smali` to Dalvik Executables (`classes.dex`).
+- **DEX Disassembler**: Disassemble `classes.dex` back into `.smali` files.
+- *(In Progress)*: Native AXML, ARSC, APK Signer, and ZipAlign integration. See [Architecture Roadmap](docs/RE_ARCHITECTURE.md) for details.
+
+## 📖 Documentation
+
+For detailed guides and deep dives into the project's ecosystem, please refer to our sub-documentation files:
+
+- 🏗️ **[AGENTS.md](AGENTS.md)** — Core Architecture & Refactoring Manifest (Memory-First constraints, Semantic Folder Structures).
+- 🔄 **[RE_ARCHITECTURE.md](docs/RE_ARCHITECTURE.md)** — Android Reverse Engineering implementation details and roadmaps.
+- 📜 **[CHANGELOG.md](CHANGELOG.md)** — Release history and feature additions.
+- 🤝 **[CONTRIBUTING.md](CONTRIBUTING.md)** — Pull Request, bug reporting, and coding guidelines.
+
+## ⚙️ Configuration (`.env`)
 
 Configure the agent's behavior via a `.env` file in the workspace root:
 
@@ -24,32 +56,35 @@ Configure the agent's behavior via a `.env` file in the workspace root:
 SAFE_MODE=1                 # 1 = Prompt user for dangerous tool actions, 0 = fully autonomous
 SANDBOX_RESTRICT=0          # 1 = Strict sandboxing (only reads/writes in current workspace)
 
-# API Connectivity (Compatible with any OpenAI format)
+# API Connectivity (OpenAI Format Compatible)
 API_BASE_URL=https://text.pollinations.ai/openai
 API_KEY=your-api-key-here   # (Leave empty if none required)
 API_MODEL=openai
 
-# Telegram bot settings
+# Telegram Daemon Settings
 TELEGRAM_BOT_TOKEN=your-telegram-token
 ALLOWED_TELEGRAM_USER_IDS=12345678,98765432
 ```
 
----
+## 🛠️ Compilation & Installation
 
-## Compilation
-
-Build targets using static compilation with `zig cc` (or `musl-gcc`):
+Build targets using static compilation with `zig cc` (or standard `gcc`):
 
 ```bash
+# Clean previous builds
 make clean
-make        # Build agent-x (131 KB - CLI + Telegram Daemon)
-make nano   # Build agent-x-nano (98 KB - Interactive CLI with history)
-make pico   # Build agent-x-pico (80 KB - Embedded CLI)
+
+# Full build (131 KB - CLI + Telegram Daemon)
+make        
+
+# Nano build (98 KB - Interactive CLI with history)
+make nano   
+
+# Pico build (80 KB - Embedded CLI)
+make pico   
 ```
 
----
-
-## Running
+## 🚀 Quick Start
 
 ### Interactive CLI Mode
 ```bash
@@ -61,18 +96,18 @@ To start the Telegram bot in the background:
 ```bash
 ./agent-x telegram --daemon
 ```
-* The background process forks, writes its PID to `agent-x.pid`, and outputs logs to `agent-x.log`.
-* To stop the daemon:
+*Note: The background process forks, writes its PID to `agent-x.pid`, and outputs logs to `agent-x.log`.*
+
+To gracefully stop the daemon:
 ```bash
 kill $(cat agent-x.pid)
 ```
 
----
+## 🧩 Extending with Custom Skills
 
-## Extending with Custom Skills
+Agent X can be extended in seconds. To add a new tool (e.g., `get_weather`):
 
-To add a new tool (e.g. `get_weather`):
-1. Create a schema definition `skills/get_weather.json`:
+1. **Create a Schema Definition (`skills/get_weather.json`)**:
    ```json
    {
      "type": "function",
@@ -89,44 +124,41 @@ To add a new tool (e.g. `get_weather`):
      }
    }
    ```
-2. Create the executable script `skills/get_weather.sh`:
+
+2. **Create the Executable Script (`skills/get_weather.sh`)**:
    ```bash
    #!/bin/bash
    curl -s "https://wttr.in/${ARG_city}?format=3"
    ```
-3. Make it executable:
+
+3. **Make it Executable**:
    ```bash
    chmod +x skills/get_weather.sh
    ```
-Agent X Pro will automatically detect, register, and execute the tool. Arguments are passed as environment variables prefixed with `ARG_` (e.g. `$ARG_city`).
 
----
+Agent X Pro automatically detects, registers, and executes the tool. LLM arguments are injected securely as environment variables prefixed with `ARG_` (e.g., `$ARG_city`).
 
-## Zero-Java Smali/DEX Pipeline
+## 📲 Dalvik & Smali Pipelines
 
-Agent X Pro includes a high-performance native Dalvik Smali compiler and DEX parser written in C11. This enables repacking and modifying Android APKs with zero Java/JDK runtime dependencies.
+To interact with Android binaries without installing Java:
 
-### Assemble Smali to DEX
+**Assemble Smali to DEX:**
 ```bash
 ./agent-x tool smali_assemble src_dir=path/to/smali out_dex=path/to/classes.dex
 ```
 
-### Disassemble DEX to Smali
+**Disassemble DEX to Smali:**
 ```bash
 ./agent-x tool read_dex path/to/classes.dex
 ```
 
 ---
 
-## Development & Architecture
+## 📄 License
 
-Agent X adheres to a strict "Memory-First" constraint and enforces a maximum of 250 Lines of Code per file. To understand our core design philosophy and feature-wise layout, please review [AGENTS.md](AGENTS.md). 
-All Android-specific operations (APK, DEX, AXML, Smali) are cleanly isolated inside the `src/android/` directory.
-
-For detailed contribution guidelines and coding standards, see [CONTRIBUTING.md](CONTRIBUTING.md).
+Agent X Pro is open-source software licensed under the **[GNU General Public License v3.0](LICENSE)**. 
 
 ---
-
-## License
-
-This project is licensed under the [GNU General Public License v3.0](LICENSE).
+<div align="center">
+  Made with ❤️ by GrandpaEJ.
+</div>
