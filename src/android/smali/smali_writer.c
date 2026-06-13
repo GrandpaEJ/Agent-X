@@ -123,9 +123,43 @@ int write_assembled_dex(smali_ctx_def_t *ctx, const char *out_dex) {
             }
         }
         buf_write_uleb128(&b, utf16_size);
-        for (size_t j = 0; j < raw_len; j++) {
-            if (up[j] == 0) { buf_write_u8(&b, 0xC0); buf_write_u8(&b, 0x80); }
-            else { buf_write_u8(&b, up[j]); }
+        for (size_t j = 0; j < raw_len; ) {
+            if (up[j] == 0) { 
+                buf_write_u8(&b, 0xC0); buf_write_u8(&b, 0x80); 
+                j++;
+            } else if ((up[j] & 0x80) == 0) {
+                buf_write_u8(&b, up[j]);
+                j++;
+            } else if ((up[j] & 0xE0) == 0xC0) {
+                buf_write_u8(&b, up[j]);
+                buf_write_u8(&b, up[j+1]);
+                j += 2;
+            } else if ((up[j] & 0xF0) == 0xE0) {
+                buf_write_u8(&b, up[j]);
+                buf_write_u8(&b, up[j+1]);
+                buf_write_u8(&b, up[j+2]);
+                j += 3;
+            } else if ((up[j] & 0xF8) == 0xF0) {
+                // 4-byte UTF-8 needs to be converted to surrogate pairs (2x 3-byte MUTF-8)
+                uint32_t codepoint = ((up[j] & 0x07) << 18) | ((up[j+1] & 0x3F) << 12) | ((up[j+2] & 0x3F) << 6) | (up[j+3] & 0x3F);
+                uint32_t u = codepoint - 0x10000;
+                uint16_t high = (u >> 10) + 0xD800;
+                uint16_t low = (u & 0x3FF) + 0xDC00;
+                
+                // High surrogate to 3-byte MUTF-8
+                buf_write_u8(&b, 0xE0 | ((high >> 12) & 0x0F));
+                buf_write_u8(&b, 0x80 | ((high >> 6) & 0x3F));
+                buf_write_u8(&b, 0x80 | (high & 0x3F));
+                
+                // Low surrogate to 3-byte MUTF-8
+                buf_write_u8(&b, 0xE0 | ((low >> 12) & 0x0F));
+                buf_write_u8(&b, 0x80 | ((low >> 6) & 0x3F));
+                buf_write_u8(&b, 0x80 | (low & 0x3F));
+                j += 4;
+            } else {
+                buf_write_u8(&b, up[j]);
+                j++;
+            }
         }
         // DEX spec: string_data_item must be null-terminated
         buf_write_u8(&b, 0);
