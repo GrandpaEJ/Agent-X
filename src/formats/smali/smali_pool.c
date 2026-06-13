@@ -548,8 +548,8 @@ void smali_pool_build_all(smali_ctx_def_t *ctx) {
                         char *cls = strndup(el->value_str, arrow - el->value_str);
                         char *typ = strndup(colon + 1, strlen(colon + 1));
                         char *name = strndup(arrow + 2, colon - (arrow + 2));
-                        smali_pool_add(&ctx->types, cls);
-                        smali_pool_add(&ctx->types, typ);
+                        smali_pool_add(&ctx->types, cls); smali_pool_add(&ctx->strings, cls);
+                        smali_pool_add(&ctx->types, typ); smali_pool_add(&ctx->strings, typ);
                         smali_pool_add(&ctx->strings, name);
                         free(cls);
                         free(typ);
@@ -569,8 +569,8 @@ void smali_pool_build_all(smali_ctx_def_t *ctx) {
                                 char *cls = strndup(node->elem.value_str, ar - node->elem.value_str);
                                 char *typ = strndup(co + 1, strlen(co + 1));
                                 char *nm = strndup(ar + 2, co - (ar + 2));
-                                smali_pool_add(&ctx->types, cls);
-                                smali_pool_add(&ctx->types, typ);
+                                smali_pool_add(&ctx->types, cls); smali_pool_add(&ctx->strings, cls);
+                                smali_pool_add(&ctx->types, typ); smali_pool_add(&ctx->strings, typ);
                                 smali_pool_add(&ctx->strings, nm);
                                 free(cls);
                                 free(typ);
@@ -599,8 +599,8 @@ void smali_pool_build_all(smali_ctx_def_t *ctx) {
                             char *cls = strndup(el->value_str, ar - el->value_str);
                             char *typ = strndup(co + 1, strlen(co + 1));
                             char *nm = strndup(ar + 2, co - (ar + 2));
-                            smali_pool_add(&ctx->types, cls);
-                            smali_pool_add(&ctx->types, typ);
+                            smali_pool_add(&ctx->types, cls); smali_pool_add(&ctx->strings, cls);
+                            smali_pool_add(&ctx->types, typ); smali_pool_add(&ctx->strings, typ);
                             smali_pool_add(&ctx->strings, nm);
                             free(cls);
                             free(typ);
