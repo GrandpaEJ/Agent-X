@@ -1,5 +1,5 @@
 <div align="center">
-  <h1 align="center">Agent X Pro 🚀</h1>
+  <h1 align="center">Agent-X 🚀</h1>
   <p align="center">
     <strong>An Ultra-Lightweight, Zero-Dependency Autonomous AI Agent & Native Android Reverse Engineering Suite built in Pure C11</strong>
   </p>
@@ -16,9 +16,9 @@
 
 ## ⚡ Overview
 
-**Agent X Pro** is a production-grade, autonomous AI agent written from scratch in pure C11. Operating with an extremely tiny RAM footprint (< 500 KB) and compiling to a static binary with **zero dynamic library dependencies**, it is highly optimized for deployment on VPS, Debian/Ubuntu servers, and Termux (Android).
+**Agent-X** is a production-grade, autonomous AI agent written from scratch in pure C11. Operating with an extremely tiny RAM footprint (< 500 KB) and compiling to a static binary with **zero dynamic library dependencies**, it is highly optimized for deployment on VPS, Debian/Ubuntu servers, and Termux (Android).
 
-Beyond being an AI orchestrator, Agent X Pro is also a **Full-Fledged Native Android Reverse Engineering Suite**. It features a high-performance Dalvik Smali compiler and DEX parser, enabling Android APK modifications without requiring any Java/JDK installations.
+Beyond being an AI orchestrator, Agent-X is also a **Full-Fledged Native Android Reverse Engineering Suite**. It features a high-performance Dalvik Smali compiler and DEX parser, enabling Android APK modifications without requiring any Java/JDK installations.
 
 ## 🌟 Key Features
 
@@ -33,7 +33,7 @@ Beyond being an AI orchestrator, Agent X Pro is also a **Full-Fledged Native And
 - **Process Management**: Automatically maps PID files (`agent-x.pid`) and outputs structured diagnostic JSON logs (`agent-x.log`) for easy monitoring.
 
 ### 📱 Zero-Java Android Reverse Engineering
-Agent X Pro includes an embedded, high-performance Dalvik compiler and DEX parser cleanly isolated inside `src/android/`:
+Agent-X includes an embedded, high-performance Dalvik compiler and DEX parser cleanly isolated inside `src/android/`:
 - **Smali Assembler**: Assemble `.smali` to Dalvik Executables (`classes.dex`).
 - **DEX Disassembler**: Disassemble `classes.dex` back into `.smali` files.
 - *(In Progress)*: Native AXML, ARSC, APK Signer, and ZipAlign integration. See [Architecture Roadmap](docs/RE_ARCHITECTURE.md) for details.
@@ -105,7 +105,7 @@ kill $(cat agent-x.pid)
 
 ## 🧩 Extending with Custom Skills
 
-Agent X can be extended in seconds. To add a new tool (e.g., `get_weather`):
+Agent-X can be extended in seconds. To add a new tool (e.g., `get_weather`):
 
 1. **Create a Schema Definition (`skills/get_weather.json`)**:
    ```json
@@ -136,7 +136,7 @@ Agent X can be extended in seconds. To add a new tool (e.g., `get_weather`):
    chmod +x skills/get_weather.sh
    ```
 
-Agent X Pro automatically detects, registers, and executes the tool. LLM arguments are injected securely as environment variables prefixed with `ARG_` (e.g., `$ARG_city`).
+Agent-X automatically detects, registers, and executes the tool. LLM arguments are injected securely as environment variables prefixed with `ARG_` (e.g., `$ARG_city`).
 
 ## 📲 Dalvik & Smali Pipelines
 
@@ -156,9 +156,4 @@ To interact with Android binaries without installing Java:
 
 ## 📄 License
 
-Agent X Pro is open-source software licensed under the **[GNU General Public License v3.0](LICENSE)**. 
-
----
-<div align="center">
-  Made with ❤️ by GrandpaEJ.
-</div>
+Agent-X is open-source software licensed under the **[GNU General Public License v3.0](LICENSE)**.
