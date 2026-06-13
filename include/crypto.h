@@ -18,4 +18,12 @@ typedef struct {
 int rsa_load_key(const char *path, rsa_key *key);
 int rsa_sign(const rsa_key *key, const uint8_t *hash, uint8_t *signature);
 
+// Base64
+char *base64_encode(const uint8_t *data, size_t input_length, size_t *output_length);
+
+// Signer
+struct zip_archive;
+char* generate_manifest(struct zip_archive *za, size_t *out_len);
+char* generate_signature_file(const char *manifest, size_t manifest_len, size_t *out_len);
+
 #endif

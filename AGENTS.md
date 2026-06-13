@@ -35,12 +35,16 @@ agent-x/
 │   │   ├── tool_sys.c       # Subprocess running and terminal commands
 │   │   └── tool_net.c       # Curl downloads and external integration
 │   │
-│   ├── formats/             # Binary format parsing/writing
+│   ├── formats/             # General binary format parsing/writing
 │   │   ├── format_zip.c     # ZIP operations (wrapping miniz)
-│   │   ├── format_axml.c    # Android Binary XML parser and encoder
-│   │   ├── format_arsc.c    # resource.arsc parser and generator
-│   │   ├── format_dex.c     # DEX parser and Smali decompiler
 │   │   └── format_elf.c     # ELF parser (native .so symbol dumper)
+│   │
+│   ├── android/             # Android-specific operations and parsers
+│   │   ├── adb/             # Android Debug Bridge client protocol
+│   │   ├── apk/             # Full APK rebuild pipeline
+│   │   ├── axml/            # Android Binary XML parser and encoder
+│   │   ├── dex/             # DEX binary parser and baksmali decompiler
+│   │   └── smali/           # Smali assembler (DEX compilation)
 │   │
 │   └── crypto/              # Minimal cryptographic implementations
 │       ├── hash.c           # MD5, SHA-1, SHA-256
@@ -142,11 +146,11 @@ Every single code change, refactoring step, or feature implementation **must foc
 ### 6.2. Git & Semantic Versioning Rules
 * **Track with Git**: All changes must be cleanly staged and committed to git.
 * **Changelog Updates**: Every release and major update must be documented in [CHANGELOG.md](file:///home/grandpa/me/code/zig/agent-x/CHANGELOG.md) following Keep a Changelog standards.
-* **Semantic Versioning**: Adhere strictly to semantic versioning (`x.y.z` format):
-  * **Major (X.y.z)**: Incompatible architectural API rewrites.
-  * **Minor (x.Y.z)**: New features added in a backward-compatible manner.
-  * **Patch (x.y.Z)**: Backward-compatible bug fixes or documentation updates.
-* **Release Tags**: Every commit that updates the version inside the changelog must be tagged in git (e.g. `git tag v1.2.1`).
+* **Semantic Versioning**: Adhere strictly to the following versioning format:
+  * **1.x.x** : [Lts] (Long Term Support / Major Architectural Updates)
+  * **x.n.x** : [new feat] (New features and backward-compatible additions)
+  * **x.x.n** : [fixed] (Bug fixes and patches)
+* **Release Tags**: Every commit that updates the version inside the changelog must be tagged in git (e.g. `git tag v0.4.0`).
 
 ---
 
@@ -154,7 +158,7 @@ Every single code change, refactoring step, or feature implementation **must foc
 
 ### 7a. DEX→Smali (Baksmali) — COMPLETE (113/113)
 
-The native DEX→Smali disassembler is split into focused files under `src/formats/dex/`:
+The native DEX→Smali disassembler is split into focused files under `src/android/dex/`:
 - `format_dex_smali_util.c` — shared utilities (aflags, sb, res, mproto, reg_name, uleb, string escaping)
 - `format_dex_smali_annot.c` — annotation parsing with recursive encoded_value, blank line between items
 - `format_dex_smali_method.c` — method disassembly with try/catch, switch payloads, access$ comments, float hints
@@ -164,7 +168,7 @@ The native DEX→Smali disassembler is split into focused files under `src/forma
 
 ### 7b. Smali→DEX (Assembler) — Implementation Plan
 
-The assembler exists at `src/formats/smali/` (~2,850 LOC) with a working pipeline but critical gaps. The goal is a perfect assembler matching `smali.jar` output — disassemble→assemble should produce byte-identical DEX.
+The assembler exists at `src/android/smali/` (~2,850 LOC) with a working pipeline but critical gaps. The goal is a perfect assembler matching `smali.jar` output — disassemble→assemble should produce byte-identical DEX.
 
 #### Phase 1: Bug Fixes & Critical Gaps (Foundation)
 
@@ -245,7 +249,7 @@ The assembler exists at `src/formats/smali/` (~2,850 LOC) with a working pipelin
 ### Current Assembler File Map
 
 ```
-src/formats/smali/
+src/android/smali/
 ├── smali.c              (34 LOC)  — Entry point: smali_assemble()
 ├── smali_parser.c       (307 LOC) — .class/.field/.method parsing, instruction dispatch
 ├── smali_lexer.c        (88 LOC)  — Tokenization, string literals, register parsing

@@ -5,9 +5,46 @@ All notable changes to the Agent X project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+**Versioning Rule:**
+- `n.x.x` : [Lts] (Long Term Support) releases
+- `x.n.x` : [new feat]
+- `x.x.n` : [fixed]
+
 ---
 
-## [1.3.1] - 2026-06-01
+## [Unreleased]
+
+### Added
+- **Docs & Licenses:** Added `CONTRIBUTING.md` and GNU General Public License v3.0 (`LICENSE`).
+- **Project Tracking:** Created GitHub issues tracking the remaining native implementation phases (APK Signer, AXML/ARSC Encoders, ZipAlign, Debug Info).
+
+### Changed
+- **Architectural Restructure:** Moved source files into a strict semantic layout (`src/core`, `src/net`, `src/tools`) adhering to `AGENTS.md`.
+- **Android Separation:** Extracted all Android-specific modules (`adb`, `apk`, `axml`, `dex`, `smali`) from `src/formats/` to a dedicated `src/android/` directory.
+- **Documentation:** Renamed `AGENT.md` to `AGENTS.md` and moved `REVERSE_ENGINEERING.md` to `docs/RE_ARCHITECTURE.md`.
+- **Build System:** Updated `Makefile` to reflect the new directory structure, maintaining full compatibility with `pico` and `nano` targets.
+- **Security:** Enabled GitHub branch protection on `main` to prevent force pushes and deletions.
+
+---
+
+## [0.4.0] - 2026-06-13
+
+### Added
+- Initial Release of the Smali to DEX assembler (`smali_assemble` tool) with full round-trip parity.
+- 3-pass contiguous annotation writing (`annotation_item`, `annotation_set_item`, `annotations_directory_item`) ensuring perfect Android Dalvik/ART parser correctness.
+- Support for complex static field initializer types and annotation parsing.
+- Hash table-based pool lookups for string, type, method, and field pools.
+
+### Fixed
+- Fixed memory corruption bugs related to uninitialized `smali_field_def_t`.
+- Resolved `List too large for field_annotations list` Android runtime verification crashes in generated DEX files.
+- Fixed `encoded_value` size encoding for string, type, and enum references.
+- Fixed string pool inflation, null terminators, and string pool bloat issues.
+- Fixed duplicate opcodes (e.g., `0x90` collision) and unified instruction parsing logic.
+
+---
+
+## [0.3.1] - 2026-06-01
 
 ### Changed
 - Upgraded the 15 microstep todo tasks inside the `todo/` directory to align with memory mapping (`mmap`), zero-copy parsing, and strict `< 250 LOC` file limits.
@@ -15,7 +52,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
-## [1.3.0] - 2026-06-01
+## [0.3.0] - 2026-06-01
 
 ### Added
 - Integrated reverse engineering dynamic skills in `skills/re/` directory (`re_extract_apk`, `re_search_strings`, `re_analyze_elf`, `re_sign_apk`, and `re_zipalign`).
@@ -26,14 +63,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
-## [1.2.1] - 2026-06-01
+## [0.2.1] - 2026-06-01
 
 ### Changed
 - Added strict memory-first coding guidelines and semantic version tracking rule definitions to [AGENT.md](file:///home/grandpa/me/code/zig/agent-x/AGENT.md).
 
 ---
 
-## [1.2.0] - 2026-06-01
+## [0.2.0] - 2026-06-01
 
 
 ### Added
@@ -47,7 +84,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
-## [1.1.0] - 2026-05-15
+## [0.1.0] - 2026-05-15
 
 ### Added
 - Integrated system, network, git, text, and Android/Termux skills (69 scripts/schemas) into the dynamic skill engine.
@@ -57,7 +94,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
-## [1.0.0] - 2026-05-01
+## [0.0.0] - 2026-05-01
 
 ### Added
 - Initial release of Agent X (compiled rewrite in pure C11).
