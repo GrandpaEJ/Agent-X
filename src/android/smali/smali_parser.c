@@ -304,6 +304,67 @@ int parse_smali_file_content(smali_ctx_def_t *ctx, const char *text) {
                     field->value_str = val_str;
                     field->array_vals = NULL;
                     field->array_count = 0;
+                    field->annot_count = 0;
+                    
+                    /* Parse optional field body for annotations */
+                    while (*p) {
+                        char *save_p = p;
+                        while (*p == ' ' || *p == '\t' || *p == '\r' || *p == '\n') p++;
+                        if (!*p) break;
+                        if (*p == '#') { char *nl = strchr(p, '\n'); p = nl ? nl + 1 : p + strlen(p); continue; }
+                        char *inner_tok = smali_next_token(&p);
+                        if (!inner_tok) break;
+                        if (strcmp(inner_tok, ".end") == 0) {
+                            char *sub = smali_next_token(&p);
+                            if (sub && strcmp(sub, "field") == 0) {
+                                free(sub); free(inner_tok); break;
+                            }
+                            if (sub) free(sub);
+                            p = save_p; free(inner_tok); break;
+                        }
+                        if (strcmp(inner_tok, ".annotation") == 0) {
+                            if (field->annot_count < MAX_ANNOTS) {
+                                smali_annotation_t *ann = &field->annots[field->annot_count++];
+                                memset(ann, 0, sizeof(*ann));
+                                ann->visibility = 1;
+                                char *vis_tok = smali_next_token(&p);
+                                if (vis_tok) {
+                                    if (strcmp(vis_tok, "runtime") == 0) ann->visibility = 1;
+                                    else if (strcmp(vis_tok, "build") == 0) ann->visibility = 0;
+                                    else if (strcmp(vis_tok, "system") == 0) ann->visibility = 2;
+                                    else { ann->type = vis_tok; vis_tok = NULL; }
+                                    if (vis_tok) free(vis_tok);
+                                }
+                                if (!ann->type) ann->type = smali_next_token(&p);
+                                while (*p) {
+                                    while (*p == ' ' || *p == '\t' || *p == '\r' || *p == '\n') p++;
+                                    if (*p == '#') { char *nl = strchr(p, '\n'); p = nl ? nl + 1 : p + strlen(p); continue; }
+                                    char *elem_tok = smali_next_token(&p);
+                                    if (!elem_tok) break;
+                                    if (strcmp(elem_tok, ".end") == 0) { char *at = smali_next_token(&p); if (at) free(at); free(elem_tok); break; }
+                                    char *eq_tok = smali_next_token(&p);
+                                    if (eq_tok && strcmp(eq_tok, "=") == 0) {
+                                        free(eq_tok);
+                                        if (ann->elem_count < MAX_ANNOT_ELEMS) {
+                                            smali_annotation_elem_t *el = &ann->elems[ann->elem_count];
+                                            memset(el, 0, sizeof(*el));
+                                            el->name = elem_tok;
+                                            parse_annot_value(&p, el);
+                                            ann->elem_count++;
+                                        } else { free(elem_tok); }
+                                    } else {
+                                        if (eq_tok) free(eq_tok);
+                                        free(elem_tok);
+                                    }
+                                }
+                            }
+                            free(inner_tok);
+                            continue;
+                        }
+                        p = save_p;
+                        free(inner_tok);
+                        break;
+                    }
                 }
                 free(name_type);
             }

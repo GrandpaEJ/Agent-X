@@ -49,6 +49,10 @@ int smali_parse_method_body(smali_ctx_def_t *ctx, smali_method_def_t *m, char **
             if (reg_tok && name_tok) {
                 m->param_names = realloc(m->param_names, (m->param_name_count + 1) * sizeof(char *));
                 m->param_names[m->param_name_count++] = strdup(name_tok);
+                m->param_annots = realloc(m->param_annots, m->param_name_count * sizeof(smali_annotation_t*));
+                m->param_annot_counts = realloc(m->param_annot_counts, m->param_name_count * sizeof(uint32_t));
+                m->param_annots[m->param_name_count - 1] = NULL;
+                m->param_annot_counts[m->param_name_count - 1] = 0;
                 free(name_tok);
                 free(reg_tok);
             } else {
@@ -56,6 +60,70 @@ int smali_parse_method_body(smali_ctx_def_t *ctx, smali_method_def_t *m, char **
                 if (name_tok) free(name_tok);
             }
             free(tok);
+            
+            /* Parse optional param body for annotations */
+            while (*start) {
+                char *save_p = start;
+                while (*start == ' ' || *start == '\t' || *start == '\r' || *start == '\n') start++;
+                if (!*start) break;
+                if (*start == '#') { char *nl = strchr(start, '\n'); start = nl ? nl + 1 : start + strlen(start); continue; }
+                char *inner_tok = smali_next_token(&start);
+                if (!inner_tok) break;
+                if (strcmp(inner_tok, ".end") == 0) {
+                    char *sub = smali_next_token(&start);
+                    if (sub && strcmp(sub, "param") == 0) {
+                        free(sub); free(inner_tok); break;
+                    }
+                    if (sub) free(sub);
+                    start = save_p; free(inner_tok); break;
+                }
+                if (strcmp(inner_tok, ".annotation") == 0 && m->param_name_count > 0) {
+                    uint32_t pidx = m->param_name_count - 1;
+                    if (m->param_annot_counts[pidx] < MAX_ANNOTS) {
+                        if (!m->param_annots[pidx]) {
+                            m->param_annots[pidx] = calloc(MAX_ANNOTS, sizeof(smali_annotation_t));
+                        }
+                        smali_annotation_t *ann = &m->param_annots[pidx][m->param_annot_counts[pidx]++];
+                        memset(ann, 0, sizeof(*ann));
+                        ann->visibility = 1;
+                        char *vis_tok = smali_next_token(&start);
+                        if (vis_tok) {
+                            if (strcmp(vis_tok, "runtime") == 0) ann->visibility = 1;
+                            else if (strcmp(vis_tok, "build") == 0) ann->visibility = 0;
+                            else if (strcmp(vis_tok, "system") == 0) ann->visibility = 2;
+                            else { ann->type = vis_tok; vis_tok = NULL; }
+                            if (vis_tok) free(vis_tok);
+                        }
+                        if (!ann->type) ann->type = smali_next_token(&start);
+                        while (*start) {
+                            while (*start == ' ' || *start == '\t' || *start == '\r' || *start == '\n') start++;
+                            if (*start == '#') { char *nl = strchr(start, '\n'); start = nl ? nl + 1 : start + strlen(start); continue; }
+                            char *elem_tok = smali_next_token(&start);
+                            if (!elem_tok) break;
+                            if (strcmp(elem_tok, ".end") == 0) { char *at = smali_next_token(&start); if (at) free(at); free(elem_tok); break; }
+                            char *eq_tok = smali_next_token(&start);
+                            if (eq_tok && strcmp(eq_tok, "=") == 0) {
+                                free(eq_tok);
+                                if (ann->elem_count < MAX_ANNOT_ELEMS) {
+                                    smali_annotation_elem_t *el = &ann->elems[ann->elem_count];
+                                    memset(el, 0, sizeof(*el));
+                                    el->name = elem_tok;
+                                    parse_annot_value(&start, el);
+                                    ann->elem_count++;
+                                } else { free(elem_tok); }
+                            } else {
+                                if (eq_tok) free(eq_tok);
+                                free(elem_tok);
+                            }
+                        }
+                    }
+                    free(inner_tok);
+                    continue;
+                }
+                start = save_p;
+                free(inner_tok);
+                break;
+            }
             continue;
         } else if (strcmp(tok, ".prologue") == 0) {
             m->prologue_set = 1;

@@ -96,8 +96,8 @@ typedef struct {
     char *value_str;
     uint32_t *array_vals;
     uint32_t array_count;
-    smali_annotation_t annot;
-    int has_annot;
+    smali_annotation_t annots[MAX_ANNOTS];
+    uint32_t annot_count;
 } smali_field_def_t;
 
 typedef struct {
@@ -134,8 +134,8 @@ typedef struct {
     uint32_t local_count;
     smali_annotation_t annots[MAX_ANNOTS];
     uint32_t annot_count;
-    smali_annotation_t *param_annots;
-    uint32_t param_annot_count;
+    smali_annotation_t **param_annots;
+    uint32_t *param_annot_counts;
 } smali_method_def_t;
 
 typedef struct {
