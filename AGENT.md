@@ -142,11 +142,11 @@ Every single code change, refactoring step, or feature implementation **must foc
 ### 6.2. Git & Semantic Versioning Rules
 * **Track with Git**: All changes must be cleanly staged and committed to git.
 * **Changelog Updates**: Every release and major update must be documented in [CHANGELOG.md](file:///home/grandpa/me/code/zig/agent-x/CHANGELOG.md) following Keep a Changelog standards.
-* **Semantic Versioning**: Adhere strictly to semantic versioning (`x.y.z` format):
-  * **Major (X.y.z)**: Incompatible architectural API rewrites.
-  * **Minor (x.Y.z)**: New features added in a backward-compatible manner.
-  * **Patch (x.y.Z)**: Backward-compatible bug fixes or documentation updates.
-* **Release Tags**: Every commit that updates the version inside the changelog must be tagged in git (e.g. `git tag v1.2.1`).
+* **Semantic Versioning**: Adhere strictly to the following versioning format:
+  * **1.x.x** : [Lts] (Long Term Support / Major Architectural Updates)
+  * **x.n.x** : [new feat] (New features and backward-compatible additions)
+  * **x.x.n** : [fixed] (Bug fixes and patches)
+* **Release Tags**: Every commit that updates the version inside the changelog must be tagged in git (e.g. `git tag v1.4.0`).
 
 ---
 

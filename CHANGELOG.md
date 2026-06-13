@@ -5,6 +5,28 @@ All notable changes to the Agent X project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+**Versioning Rule:**
+- `1.x.x` : [Lts] (Long Term Support) releases
+- `x.n.x` : [new feat]
+- `x.x.n` : [fixed]
+
+---
+
+## [1.4.0] - 2026-06-13
+
+### Added
+- Initial Release of the Smali to DEX assembler (`smali_assemble` tool) with full round-trip parity.
+- 3-pass contiguous annotation writing (`annotation_item`, `annotation_set_item`, `annotations_directory_item`) ensuring perfect Android Dalvik/ART parser correctness.
+- Support for complex static field initializer types and annotation parsing.
+- Hash table-based pool lookups for string, type, method, and field pools.
+
+### Fixed
+- Fixed memory corruption bugs related to uninitialized `smali_field_def_t`.
+- Resolved `List too large for field_annotations list` Android runtime verification crashes in generated DEX files.
+- Fixed `encoded_value` size encoding for string, type, and enum references.
+- Fixed string pool inflation, null terminators, and string pool bloat issues.
+- Fixed duplicate opcodes (e.g., `0x90` collision) and unified instruction parsing logic.
+
 ---
 
 ## [1.3.1] - 2026-06-01
