@@ -14,26 +14,35 @@ static int make_dirs(const char *path) {
 }
 
 void *zip_extract_entry(zip_archive *za, int index, size_t *out_size) {
-    if (!za || index < 0 || index >= za->num_entries) return NULL;
+    if (!za || index < 0 || index >= za->num_entries) { printf("invalid za or index\n"); return NULL; }
     struct zip_entry *e = &za->entries[index];
-    if (e->lh_offset + sizeof(lfh_t) > za->size) return NULL;
+    if (e->lh_offset + sizeof(lfh_t) > za->size) { printf("lh_offset out of bounds\n"); return NULL; }
 
     lfh_t *lfh = (lfh_t *)(za->data + e->lh_offset);
-    if (lfh->sig != LFH_SIG) return NULL;
+    if (lfh->sig != LFH_SIG) { printf("lfh sig mismatch %x\n", lfh->sig); return NULL; }
 
     uint32_t data_off = e->lh_offset + sizeof(lfh_t) + lfh->name_len + lfh->extra_len;
-    if (data_off + lfh->comp_size > za->size) return NULL;
+    if (data_off + lfh->comp_size > za->size) { printf("data_off + comp_size > za->size\n"); return NULL; }
     uint8_t *comp_data = za->data + data_off;
 
     if (e->method == 0) {
-        void *out = malloc(e->uncomp_size);
-        if (!out) return NULL;
-        memcpy(out, comp_data, e->uncomp_size);
+        void *out = malloc(e->uncomp_size > 0 ? e->uncomp_size : 1);
+        if (!out) { printf("malloc failed\n"); return NULL; }
+        if (e->uncomp_size > 0) {
+            memcpy(out, comp_data, e->uncomp_size);
+        }
         *out_size = e->uncomp_size;
         return out;
     } else if (e->method == 8) {
-        return zip_inflate(comp_data, e->comp_size, out_size);
+        if (e->uncomp_size == 0) {
+            *out_size = 0;
+            return malloc(1);
+        }
+        void* out = zip_inflate(comp_data, e->comp_size, out_size);
+        if (!out) { printf("zip_inflate failed\n"); return NULL; }
+        return out;
     }
+    printf("unsupported method %d\n", e->method);
     return NULL;
 }
 

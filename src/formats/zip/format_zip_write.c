@@ -1,3 +1,4 @@
+#include "format_zip_internal.h"
 #include "formats.h"
 #include <sys/stat.h>
 #include <stdlib.h>
@@ -11,54 +12,7 @@ static char *my_strdup(const char *s) {
     return p;
 }
 
-#define LFH_SIG  0x04034b50
-#define CDFH_SIG 0x02014b50
-#define EOCD_SIG 0x06054b50
 
-typedef struct __attribute__((packed)) {
-    uint32_t sig;
-    uint16_t ver_needed;
-    uint16_t flags;
-    uint16_t method;
-    uint16_t mod_time;
-    uint16_t mod_date;
-    uint32_t crc32;
-    uint32_t comp_size;
-    uint32_t uncomp_size;
-    uint16_t name_len;
-    uint16_t extra_len;
-} lfh_t;
-
-typedef struct __attribute__((packed)) {
-    uint32_t sig;
-    uint16_t ver_by;
-    uint16_t ver_needed;
-    uint16_t flags;
-    uint16_t method;
-    uint16_t mod_time;
-    uint16_t mod_date;
-    uint32_t crc32;
-    uint32_t comp_size;
-    uint32_t uncomp_size;
-    uint16_t name_len;
-    uint16_t extra_len;
-    uint16_t comment_len;
-    uint16_t disk_start;
-    uint16_t internal_attrs;
-    uint32_t external_attrs;
-    uint32_t lh_offset;
-} cdfh_t;
-
-typedef struct __attribute__((packed)) {
-    uint32_t sig;
-    uint16_t disk_num;
-    uint16_t disk_start;
-    uint16_t num_on_disk;
-    uint16_t num_total;
-    uint32_t cd_size;
-    uint32_t cd_offset;
-    uint16_t comment_len;
-} eocd_t;
 
 struct zip_entry_w {
     char *name;
@@ -111,10 +65,9 @@ zip_writer *zip_writer_open(const char *path) {
     return zw;
 }
 
-int zip_writer_add(zip_writer *zw, const char *name,
-                   const void *data, size_t size, int compress) {
-    (void)compress; // We always store for now
-    if (!zw || !name || !data) return -1;
+int zip_writer_add_raw(zip_writer *zw, const char *name,
+                       const void *comp_data, size_t comp_size, size_t uncomp_size, uint32_t crc32, int method, int alignment) {
+    if (!zw || !name || !comp_data) return -1;
 
     if (zw->num_entries >= zw->cap_entries) {
         zw->cap_entries *= 2;
@@ -125,33 +78,50 @@ int zip_writer_add(zip_writer *zw, const char *name,
     }
 
     uint16_t name_len = (uint16_t)strlen(name);
-    uint32_t crc = crc32_buf(data, size);
     long off = ftell(zw->fp);
 
-    // Write LFH
+    uint16_t extra_len = 0;
+    if (alignment > 0) {
+        long data_offset = off + 30 + name_len;
+        int pad = (alignment - (data_offset % alignment)) % alignment;
+        extra_len = pad;
+    }
+
     lfh_t lfh;
     memset(&lfh, 0, sizeof(lfh));
     lfh.sig = LFH_SIG;
     lfh.ver_needed = 20;
-    lfh.method = 0;
-    lfh.crc32 = crc;
-    lfh.comp_size = (uint32_t)size;
-    lfh.uncomp_size = (uint32_t)size;
+    lfh.method = method;
+    lfh.crc32 = crc32;
+    lfh.comp_size = (uint32_t)comp_size;
+    lfh.uncomp_size = (uint32_t)uncomp_size;
     lfh.name_len = name_len;
+    lfh.extra_len = extra_len;
 
     fwrite(&lfh, sizeof(lfh), 1, zw->fp);
     fwrite(name, 1, name_len, zw->fp);
-    fwrite(data, 1, size, zw->fp);
+    if (extra_len > 0) {
+        char pad_buf[4096] = {0};
+        fwrite(pad_buf, 1, extra_len, zw->fp);
+    }
+    fwrite(comp_data, 1, comp_size, zw->fp);
 
     struct zip_entry_w *e = &zw->entries[zw->num_entries++];
     e->name = my_strdup(name);
     e->name_len = name_len;
-    e->crc32 = crc;
-    e->comp_size = (uint32_t)size;
-    e->uncomp_size = (uint32_t)size;
-    e->method = 0;
+    e->crc32 = crc32;
+    e->comp_size = (uint32_t)comp_size;
+    e->uncomp_size = (uint32_t)uncomp_size;
+    e->method = method;
     e->lh_offset = (uint32_t)off;
     return 0;
+}
+
+int zip_writer_add(zip_writer *zw, const char *name,
+                   const void *data, size_t size, int compress, int alignment) {
+    (void)compress; // We always store for now
+    uint32_t crc = crc32_buf(data, size);
+    return zip_writer_add_raw(zw, name, data, size, size, crc, 0, alignment);
 }
 
 int zip_writer_close(zip_writer *zw) {
@@ -199,29 +169,30 @@ int zip_writer_close(zip_writer *zw) {
 
 int zipalign_file(const char *in_path, const char *out_path, int alignment) {
     zip_archive *za = zip_open(in_path);
-    if (!za) return -1;
+    if (!za) { printf("zip_open failed\n"); return -1; }
     zip_writer *zw = zip_writer_open(out_path);
-    if (!zw) { zip_close(za); return -1; }
+    if (!zw) { printf("zip_writer_open failed\n"); zip_close(za); return -1; }
 
     int n = zip_get_num_entries(za);
     for (int i = 0; i < n; i++) {
-        size_t sz;
-        void *data = zip_extract_entry(za, i, &sz);
-        if (!data) { zip_close(za); zip_writer_close(zw); return -1; }
+        struct zip_entry *e = &za->entries[i];
+        lfh_t *lfh = (lfh_t *)(za->data + e->lh_offset);
+        uint32_t data_off = e->lh_offset + sizeof(lfh_t) + lfh->name_len + lfh->extra_len;
+        const void *comp_data = za->data + data_off;
 
         const char *name = zip_get_entry_name(za, i);
-        int is_stored = !zip_entry_is_compressed(za, i);
+        int is_stored = (e->method == 0);
 
-        // For stored entries, pad to alignment
+        int entry_align = 0;
         if (is_stored) {
-            long offset = ftell(zw->fp);
-            long pad = (alignment - (offset % alignment)) % alignment;
-            for (long j = 0; j < pad; j++)
-                fputc(0, zw->fp);
+            entry_align = alignment;
+            size_t n_len = strlen(name);
+            if (n_len > 3 && strcmp(name + n_len - 3, ".so") == 0) {
+                entry_align = 4096;
+            }
         }
 
-        zip_writer_add(zw, name, data, sz, !is_stored);
-        free(data);
+        zip_writer_add_raw(zw, name, comp_data, e->comp_size, e->uncomp_size, e->crc32, e->method, entry_align);
     }
 
     zip_close(za);

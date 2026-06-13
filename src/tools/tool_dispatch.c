@@ -770,7 +770,7 @@ static char* execute_repack_apk(cJSON* args) {
         uint8_t *buf = malloc(sz);
         fread(buf, 1, sz, fp);
         fclose(fp);
-        zip_writer_add(zw, name, buf, sz, 1);
+        zip_writer_add(zw, name, buf, sz, 1, 0);
         free(buf);
         free(files[i]);
     }
@@ -1007,6 +1007,32 @@ static char* execute_read_dex(cJSON* args) {
     return res_str;
 }
 
+static char* execute_zipalign(cJSON* args) {
+    cJSON* in_obj = cJSON_GetObjectItem(args, "in");
+    cJSON* out_obj = cJSON_GetObjectItem(args, "out");
+    cJSON* align_obj = cJSON_GetObjectItem(args, "align");
+    
+    if (!in_obj || !cJSON_IsString(in_obj) || !out_obj || !cJSON_IsString(out_obj))
+        return strdup("{\"error\": \"Missing 'in' or 'out' path\"}");
+        
+    int alignment = 4;
+    if (align_obj && cJSON_IsNumber(align_obj)) {
+        alignment = align_obj->valueint;
+    }
+    
+    if (zipalign_file(in_obj->valuestring, out_obj->valuestring, alignment) == 0) {
+        cJSON *res = cJSON_CreateObject();
+        cJSON_AddStringToObject(res, "status", "success");
+        cJSON_AddStringToObject(res, "output", out_obj->valuestring);
+        char *res_str = cJSON_PrintUnformatted(res);
+        cJSON_Delete(res);
+        return res_str;
+    } else {
+        return strdup("{\"error\": \"Failed to zipalign APK\"}");
+    }
+}
+
+
 char* tools_execute(const char* name, cJSON* args) {
     char details[256];
     snprintf(details, sizeof(details), "tool: %s", name);
@@ -1035,6 +1061,7 @@ char* tools_execute(const char* name, cJSON* args) {
     if (strcmp(name, "smali_assemble") == 0) return execute_smali_assemble(args);
     if (strcmp(name, "repack_apk") == 0) return execute_repack_apk(args);
     if (strcmp(name, "resign_apk") == 0) return execute_resign_apk(args);
+    if (strcmp(name, "zipalign") == 0) return execute_zipalign(args);
     
     return execute_dynamic_skill(name, args);
 }

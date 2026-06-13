@@ -19,7 +19,8 @@ void *zip_extract_entry(zip_archive *za, int index, size_t *out_size);
 int zip_extract_all(zip_archive *za, const char *out_dir);
 typedef struct zip_writer zip_writer;
 zip_writer *zip_writer_open(const char *path);
-int zip_writer_add(zip_writer *zw, const char *name, const void *data, size_t size, int compress);
+int zip_writer_add(zip_writer *zw, const char *name, const void *data, size_t size, int compress, int alignment);
+int zip_writer_add_raw(zip_writer *zw, const char *name, const void *comp_data, size_t comp_size, size_t uncomp_size, uint32_t crc32, int method, int alignment);
 int zip_writer_close(zip_writer *zw);
 int zipalign_file(const char *in_path, const char *out_path, int alignment);
 

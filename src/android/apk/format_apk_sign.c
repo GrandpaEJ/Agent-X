@@ -161,9 +161,9 @@ int apk_sign_v1(const char *in_apk, const char *out_apk, rsa_key *key, int do_v2
     }
 
     // Write META-INF files first
-    zip_writer_add(zw, "META-INF/MANIFEST.MF", mf_data, mf_len, 1);
-    zip_writer_add(zw, "META-INF/CERT.SF", sf_data, sf_len, 1);
-    zip_writer_add(zw, "META-INF/CERT.RSA", rsa_data, rsa_len, 0);
+    zip_writer_add(zw, "META-INF/MANIFEST.MF", mf_data, mf_len, 1, 0);
+    zip_writer_add(zw, "META-INF/CERT.SF", sf_data, sf_len, 1, 0);
+    zip_writer_add(zw, "META-INF/CERT.RSA", rsa_data, rsa_len, 0, 0);
 
     // Copy original files (except META-INF)
     int num_entries = zip_get_num_entries(za);
@@ -176,7 +176,7 @@ int apk_sign_v1(const char *in_apk, const char *out_apk, rsa_key *key, int do_v2
         void *data = zip_extract_entry(za, i, &size);
         if (data) {
             int compress = zip_entry_is_compressed(za, i);
-            zip_writer_add(zw, name, data, size, compress);
+            zip_writer_add(zw, name, data, size, compress, 0);
             free(data);
         }
     }
