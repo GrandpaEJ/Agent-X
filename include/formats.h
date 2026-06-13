@@ -7,6 +7,7 @@
 typedef struct zip_archive zip_archive;
 typedef struct axml_ctx axml_ctx;
 typedef struct dex_ctx dex_ctx;
+typedef struct arsc_ctx arsc_ctx;
 
 // ZIP
 zip_archive *zip_open(const char *path);
@@ -29,6 +30,13 @@ axml_ctx *axml_parse(const uint8_t *data, size_t size);
 char *axml_get_xml(axml_ctx *ctx);
 void axml_free(axml_ctx *ctx);
 int axml_assemble(const char *src_xml, const char *out_axml);
+
+// ARSC
+arsc_ctx *arsc_parse(const uint8_t *data, size_t size);
+const char *arsc_get_string(arsc_ctx *ctx, uint32_t index);
+int arsc_patch_string(arsc_ctx *ctx, uint32_t index, const char *new_str);
+uint8_t *arsc_build(arsc_ctx *ctx, size_t *out_size);
+void arsc_free(arsc_ctx *ctx);
 
 // DEX (reader)
 dex_ctx *dex_parse(const uint8_t *data, size_t size);
