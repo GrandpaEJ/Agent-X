@@ -112,12 +112,12 @@ char* generate_cert_rsa(const char *sf_data, size_t sf_len, rsa_key *key, size_t
         return NULL;
     }
 
-    size_t total_len = sizeof(pkcs7_template) + 256;
+    size_t total_len = pkcs7_template_len;
     char *cert_rsa = malloc(total_len);
     if (!cert_rsa) return NULL;
 
-    memcpy(cert_rsa, pkcs7_template, sizeof(pkcs7_template));
-    memcpy(cert_rsa + sizeof(pkcs7_template), signature, 256);
+    memcpy(cert_rsa, pkcs7_template, pkcs7_template_len);
+    memcpy(cert_rsa + 1073, signature, 256);
 
     *out_len = total_len;
     return cert_rsa;
