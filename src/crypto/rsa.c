@@ -247,28 +247,42 @@ static const uint8_t pkcs1_sha1_prefix[] = {
     0x05, 0x00, 0x04, 0x14
 };
 
-int rsa_sign(const rsa_key *key, const uint8_t *hash, uint8_t *signature) {
+// PKCS#1 v1.5 signature: DER(SHA-256 digest)
+static const uint8_t pkcs1_sha256_prefix[] = {
+    0x30, 0x31, 0x30, 0x0d, 0x06, 0x09, 0x60, 0x86, 0x48, 0x01, 0x65, 0x03, 0x04, 0x02, 0x01,
+    0x05, 0x00, 0x04, 0x20
+};
+
+static int rsa_sign_internal(const rsa_key *key, const uint8_t *hash, uint8_t *signature, 
+                             const uint8_t *prefix, size_t prefix_len, size_t hash_len) {
     int k = key->bits / 8;
     uint8_t *em = malloc(k);
     memset(em, 0, k);
     em[0] = 0x00; em[1] = 0x01;
-    int ps_len = k - 3 - (int)sizeof(pkcs1_sha1_prefix) - 20;
+    int ps_len = k - 3 - (int)prefix_len - (int)hash_len;
     memset(em + 2, 0xFF, ps_len);
     em[2 + ps_len] = 0x00;
-    memcpy(em + 2 + ps_len + 1, pkcs1_sha1_prefix, sizeof(pkcs1_sha1_prefix));
-    memcpy(em + 2 + ps_len + 1 + sizeof(pkcs1_sha1_prefix), hash, 20);
+    memcpy(em + 2 + ps_len + 1, prefix, prefix_len);
+    memcpy(em + 2 + ps_len + 1 + prefix_len, hash, hash_len);
 
-    int limbs = (k + 3) / 4;
     uint32_t base[MAX_LIMBS], result[MAX_LIMBS];
     memset(base, 0, sizeof(base));
     for (int i = 0; i < k; i++)
         base[(k - 1 - i) / 4] |= (uint32_t)em[i] << ((3 - (i % 4)) * 8);
 
-    mod_exp(result, base, key->d, key->m, limbs);
+    mod_exp(result, base, key->d, key->m, (k + 3) / 4);
     memset(signature, 0, k);
     for (int i = 0; i < k; i++)
         signature[i] = (result[(k - 1 - i) / 4] >> ((3 - (i % 4)) * 8)) & 0xFF;
 
     free(em);
     return 0;
+}
+
+int rsa_sign(const rsa_key *key, const uint8_t *hash, uint8_t *signature) {
+    return rsa_sign_internal(key, hash, signature, pkcs1_sha1_prefix, sizeof(pkcs1_sha1_prefix), 20);
+}
+
+int rsa_sign_sha256(const rsa_key *key, const uint8_t *hash, uint8_t *signature) {
+    return rsa_sign_internal(key, hash, signature, pkcs1_sha256_prefix, sizeof(pkcs1_sha256_prefix), 32);
 }
