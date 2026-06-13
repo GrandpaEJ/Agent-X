@@ -14,16 +14,30 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+---
+
+## [0.5.0] - 2026-06-13
+
 ### Added
-- **Docs & Licenses:** Added `CONTRIBUTING.md` and GNU General Public License v3.0 (`LICENSE`).
+- **Native APK Signer:** Full implementation of APK Signature Scheme v1, v2, and v3 including chunked hashing, native SHA-256 and RSA-SHA256, PKCS#7/PKCS#8 DER parsing, and dynamic custom certificates.
+- **AXML Encoder:** Complete native AXML encoder with 100% AAPT compliance, supporting Resource Maps, namespace URIs, and attribute sorting.
+- **Smali Assembler:** Implemented Phase 2 Annotation System (Class, Field, Method, Parameter) and added rigorous validation & error reporting (register limits, type list deduplication).
+- **ZipAlign & APK Pipeline:** Lossless native `zipalign` integration and full APK decode/build orchestration logic.
+- **Docs & Licenses:** Added `CONTRIBUTING.md` and GNU General Public License v3.0 (`LICENSE`), alongside comprehensive internals documentation for AXML, ARSC, APK Signer, and DEX/Smali.
 - **Project Tracking:** Created GitHub issues tracking the remaining native implementation phases (APK Signer, AXML/ARSC Encoders, ZipAlign, Debug Info).
 
 ### Changed
-- **Architectural Restructure:** Moved source files into a strict semantic layout (`src/core`, `src/net`, `src/tools`) adhering to `AGENTS.md`.
+- **Architectural Restructure:** Moved source files into a strict semantic layout (`src/core`, `src/net`, `src/tools`) adhering to `AGENTS.md` and the Small File Rule.
 - **Android Separation:** Extracted all Android-specific modules (`adb`, `apk`, `axml`, `dex`, `smali`) from `src/formats/` to a dedicated `src/android/` directory.
 - **Documentation:** Renamed `AGENT.md` to `AGENTS.md` and moved `REVERSE_ENGINEERING.md` to `docs/RE_ARCHITECTURE.md`.
 - **Build System:** Updated `Makefile` to reflect the new directory structure, maintaining full compatibility with `pico` and `nano` targets.
 - **Security:** Enabled GitHub branch protection on `main` to prevent force pushes and deletions.
+
+### Fixed
+- **Smali:** Corrected MUTF-8 surrogate pair encoding for 4-byte UTF-8 chars.
+- **DEX:** Fixed DEX verifier crash and string pool bloat issues.
+- **AXML:** Fixed boolean encoding, integer types, and sorted attributes by resource ID.
+- **Crypto:** Corrected CERT.RSA signature offset injection length in V1 PKCS#7 template.
 
 ---
 
