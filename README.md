@@ -116,3 +116,17 @@ Agent X Pro includes a high-performance native Dalvik Smali compiler and DEX par
 ./agent-x tool read_dex path/to/classes.dex
 ```
 
+---
+
+## Development & Architecture
+
+Agent X adheres to a strict "Memory-First" constraint and enforces a maximum of 250 Lines of Code per file. To understand our core design philosophy and feature-wise layout, please review [AGENTS.md](AGENTS.md). 
+All Android-specific operations (APK, DEX, AXML, Smali) are cleanly isolated inside the `src/android/` directory.
+
+For detailed contribution guidelines and coding standards, see [CONTRIBUTING.md](CONTRIBUTING.md).
+
+---
+
+## License
+
+This project is licensed under the [GNU General Public License v3.0](LICENSE).
