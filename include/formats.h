@@ -38,6 +38,11 @@ void dex_free(dex_ctx *ctx);
 int smali_assemble(const char *src_dir, const char *out_dex);
 
 // APK
+#include "crypto.h"
+int apk_sign_v1(const char *in_apk, const char *out_apk, rsa_key *key);
+char* generate_manifest(struct zip_archive *za, size_t *out_len);
+char* generate_signature_file(const char *manifest, size_t manifest_len, size_t *out_len);
+char* generate_cert_rsa(const char *sf_data, size_t sf_len, rsa_key *key, size_t *out_len);
 char *apk_analyze(const char *path);
 void apk_free(char *result);
 
