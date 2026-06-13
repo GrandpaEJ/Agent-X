@@ -499,94 +499,156 @@ int write_assembled_dex(smali_ctx_def_t *ctx, const char *out_dex) {
 
     // Write annotation data: track offsets for map list
     uint32_t *annot_offsets = calloc(class_count, 4);
-    uint32_t first_annot_dir_off = 0;
-    uint32_t annot_dir_count = 0;
-    uint32_t first_annot_set_off = 0;
-    uint32_t annot_set_count = 0;
-    uint32_t first_annot_item_off = 0;
-    uint32_t annot_item_count = 0;
+    uint32_t first_annot_dir_off = 0, annot_dir_count = 0;
+    uint32_t first_annot_set_off = 0, annot_set_count = 0;
+    uint32_t first_annot_item_off = 0, annot_item_count = 0;
+    
+    uint32_t **class_annot_item_offs = calloc(class_count, sizeof(uint32_t*));
+    uint32_t ***meth_d_annot_item_offs = calloc(class_count, sizeof(uint32_t**));
+    uint32_t ***meth_v_annot_item_offs = calloc(class_count, sizeof(uint32_t**));
+    
+    // Pass 1: Write all annotation_item
     for (uint32_t i = 0; i < class_count; i++) {
         smali_class_def_t *c = &ctx->classes[i];
-        int has_class_annot = (c->annot_count > 0 && c->annots[0].type);
-        int meth_annot_count = 0;
-        for (int mt = 0; mt < 2; mt++) {
-            uint32_t mc = mt ? c->virtual_method_count : c->direct_method_count;
-            smali_method_def_t *ma = mt ? c->virtual_methods : c->direct_methods;
-            for (uint32_t j = 0; j < mc; j++)
-                if (ma[j].annot_count > 0) meth_annot_count++;
+        if (c->annot_count > 0 && c->annots[0].type) {
+            uint32_t ic = c->annot_count > MAX_ANNOTS ? MAX_ANNOTS : c->annot_count;
+            class_annot_item_offs[i] = calloc(ic, sizeof(uint32_t));
+            for (uint32_t ai = 0; ai < ic; ai++) {
+                class_annot_item_offs[i][ai] = b.len;
+                annot_item_count++;
+                if (first_annot_item_off == 0) first_annot_item_off = b.len;
+                buf_write_u8(&b, c->annots[ai].visibility);
+                write_encoded_annotation(&b, ctx, &c->annots[ai]);
+            }
         }
-        if (!has_class_annot && meth_annot_count == 0) continue;
-
-        annot_offsets[i] = b.len;
-        annot_dir_count++;
-        if (first_annot_dir_off == 0 || b.len < first_annot_dir_off)
-            first_annot_dir_off = b.len;
-
-        uint32_t dir_off = b.len;
-        uint32_t n_meth = meth_annot_count > 128 ? 128 : (uint32_t)meth_annot_count;
-        uint32_t hdr_sz = 16 + n_meth * 8;
-        for (uint32_t k = 0; k < hdr_sz; k++) buf_write_u8(&b, 0);
-
-        uint32_t *meth_keys = n_meth ? malloc(n_meth * 2 * sizeof(uint32_t)) : NULL;
-        uint32_t mi = 0;
-        for (int mt = 0; mt < 2; mt++) {
-            uint32_t mc = mt ? c->virtual_method_count : c->direct_method_count;
-            smali_method_def_t *ma = mt ? c->virtual_methods : c->direct_methods;
-            for (uint32_t j = 0; j < mc && mi < n_meth; j++) {
-                if (ma[j].annot_count > 0) {
-                    char mkey[1024];
-                    snprintf(mkey, sizeof(mkey), "%s->%s%s", c->descriptor, ma[j].name, ma[j].signature);
-                    meth_keys[mi * 2] = smali_pool_find(&ctx->methods, mkey);
-                    if (meth_keys[mi * 2] == 0xFFFFFFFF) meth_keys[mi * 2] = 0;
-                    meth_keys[mi * 2 + 1] = b.len;
-                    uint32_t ac = ma[j].annot_count > MAX_ANNOTS ? MAX_ANNOTS : ma[j].annot_count;
-                    buf_write_u32(&b, ac);
-                    uint32_t es = b.len;
-                    for (uint32_t ai = 0; ai < ac; ai++) buf_write_u32(&b, 0);
-                    for (uint32_t ai = 0; ai < ac; ai++) {
-                        uint32_t io = b.len;
-                        annot_item_count++;
-                        if (first_annot_item_off == 0 || b.len < first_annot_item_off)
-                            first_annot_item_off = b.len;
-                        buf_write_u8(&b, ma[j].annots[ai].visibility);
-                        write_encoded_annotation(&b, ctx, &ma[j].annots[ai]);
-                        *(uint32_t *)(b.buf + es + ai * 4) = io;
-                    }
-                    mi++;
+        meth_d_annot_item_offs[i] = calloc(c->direct_method_count, sizeof(uint32_t*));
+        for (uint32_t j = 0; j < c->direct_method_count; j++) {
+            if (c->direct_methods[j].annot_count > 0) {
+                uint32_t ac = c->direct_methods[j].annot_count > MAX_ANNOTS ? MAX_ANNOTS : c->direct_methods[j].annot_count;
+                meth_d_annot_item_offs[i][j] = calloc(ac, sizeof(uint32_t));
+                for (uint32_t ai = 0; ai < ac; ai++) {
+                    meth_d_annot_item_offs[i][j][ai] = b.len;
+                    annot_item_count++;
+                    if (first_annot_item_off == 0) first_annot_item_off = b.len;
+                    buf_write_u8(&b, c->direct_methods[j].annots[ai].visibility);
+                    write_encoded_annotation(&b, ctx, &c->direct_methods[j].annots[ai]);
                 }
             }
         }
-
-        uint32_t class_set_off = 0;
-        if (has_class_annot) {
-            class_set_off = b.len;
-            annot_set_count++;
-            if (first_annot_set_off == 0 || b.len < first_annot_set_off)
-                first_annot_set_off = b.len;
-            uint32_t ic = c->annot_count > MAX_ANNOTS ? MAX_ANNOTS : c->annot_count;
-            buf_write_u32(&b, ic);
-            uint32_t es = b.len;
-            for (uint32_t ai = 0; ai < ic; ai++) buf_write_u32(&b, 0);
-            for (uint32_t ai = 0; ai < ic; ai++) {
-                uint32_t io = b.len;
-                annot_item_count++;
-                if (first_annot_item_off == 0 || b.len < first_annot_item_off)
-                    first_annot_item_off = b.len;
-                buf_write_u8(&b, c->annots[ai].visibility);
-                write_encoded_annotation(&b, ctx, &c->annots[ai]);
-                *(uint32_t *)(b.buf + es + ai * 4) = io;
+        meth_v_annot_item_offs[i] = calloc(c->virtual_method_count, sizeof(uint32_t*));
+        for (uint32_t j = 0; j < c->virtual_method_count; j++) {
+            if (c->virtual_methods[j].annot_count > 0) {
+                uint32_t ac = c->virtual_methods[j].annot_count > MAX_ANNOTS ? MAX_ANNOTS : c->virtual_methods[j].annot_count;
+                meth_v_annot_item_offs[i][j] = calloc(ac, sizeof(uint32_t));
+                for (uint32_t ai = 0; ai < ac; ai++) {
+                    meth_v_annot_item_offs[i][j][ai] = b.len;
+                    annot_item_count++;
+                    if (first_annot_item_off == 0) first_annot_item_off = b.len;
+                    buf_write_u8(&b, c->virtual_methods[j].annots[ai].visibility);
+                    write_encoded_annotation(&b, ctx, &c->virtual_methods[j].annots[ai]);
+                }
             }
         }
-
-        *(uint32_t *)(b.buf + dir_off) = class_set_off;
-        *(uint32_t *)(b.buf + dir_off + 8) = n_meth;
-        for (uint32_t mi2 = 0; mi2 < n_meth; mi2++) {
-            *(uint32_t *)(b.buf + dir_off + 16 + mi2 * 8) = meth_keys[mi2 * 2];
-            *(uint32_t *)(b.buf + dir_off + 16 + mi2 * 8 + 4) = meth_keys[mi2 * 2 + 1];
-        }
-        free(meth_keys);
     }
+    
+    // Pass 2: Write all annotation_set_item
+    uint32_t *class_set_offs = calloc(class_count, sizeof(uint32_t));
+    uint32_t **meth_d_set_offs = calloc(class_count, sizeof(uint32_t*));
+    uint32_t **meth_v_set_offs = calloc(class_count, sizeof(uint32_t*));
+    for (uint32_t i = 0; i < class_count; i++) {
+        smali_class_def_t *c = &ctx->classes[i];
+        if (class_annot_item_offs[i]) {
+            align_4(&b);
+            class_set_offs[i] = b.len;
+            annot_set_count++;
+            if (first_annot_set_off == 0) first_annot_set_off = b.len;
+            uint32_t ic = c->annot_count > MAX_ANNOTS ? MAX_ANNOTS : c->annot_count;
+            buf_write_u32(&b, ic);
+            for (uint32_t ai = 0; ai < ic; ai++) buf_write_u32(&b, class_annot_item_offs[i][ai]);
+        }
+        meth_d_set_offs[i] = calloc(c->direct_method_count, sizeof(uint32_t));
+        for (uint32_t j = 0; j < c->direct_method_count; j++) {
+            if (meth_d_annot_item_offs[i][j]) {
+                align_4(&b);
+                meth_d_set_offs[i][j] = b.len;
+                annot_set_count++;
+                if (first_annot_set_off == 0) first_annot_set_off = b.len;
+                uint32_t ac = c->direct_methods[j].annot_count > MAX_ANNOTS ? MAX_ANNOTS : c->direct_methods[j].annot_count;
+                buf_write_u32(&b, ac);
+                for (uint32_t ai = 0; ai < ac; ai++) buf_write_u32(&b, meth_d_annot_item_offs[i][j][ai]);
+            }
+        }
+        meth_v_set_offs[i] = calloc(c->virtual_method_count, sizeof(uint32_t));
+        for (uint32_t j = 0; j < c->virtual_method_count; j++) {
+            if (meth_v_annot_item_offs[i][j]) {
+                align_4(&b);
+                meth_v_set_offs[i][j] = b.len;
+                annot_set_count++;
+                if (first_annot_set_off == 0) first_annot_set_off = b.len;
+                uint32_t ac = c->virtual_methods[j].annot_count > MAX_ANNOTS ? MAX_ANNOTS : c->virtual_methods[j].annot_count;
+                buf_write_u32(&b, ac);
+                for (uint32_t ai = 0; ai < ac; ai++) buf_write_u32(&b, meth_v_annot_item_offs[i][j][ai]);
+            }
+        }
+    }
+    
+    // Pass 3: Write all annotations_directory_item
+    for (uint32_t i = 0; i < class_count; i++) {
+        smali_class_def_t *c = &ctx->classes[i];
+        int meth_annot_count = 0;
+        for (uint32_t j = 0; j < c->direct_method_count; j++) if (meth_d_set_offs[i][j]) meth_annot_count++;
+        for (uint32_t j = 0; j < c->virtual_method_count; j++) if (meth_v_set_offs[i][j]) meth_annot_count++;
+        
+        if (!class_set_offs[i] && meth_annot_count == 0) continue;
+        
+        align_4(&b);
+        annot_offsets[i] = b.len;
+        annot_dir_count++;
+        if (first_annot_dir_off == 0) first_annot_dir_off = b.len;
+        
+        buf_write_u32(&b, class_set_offs[i]);
+        buf_write_u32(&b, 0); // fields_size
+        buf_write_u32(&b, meth_annot_count);
+        buf_write_u32(&b, 0); // annotated_parameters_size
+        
+        for (uint32_t j = 0; j < c->direct_method_count; j++) {
+            if (meth_d_set_offs[i][j]) {
+                char mkey[1024];
+                snprintf(mkey, sizeof(mkey), "%s->%s%s", c->descriptor, c->direct_methods[j].name, c->direct_methods[j].signature);
+                uint32_t mid = smali_pool_find(&ctx->methods, mkey);
+                buf_write_u32(&b, mid == 0xFFFFFFFF ? 0 : mid);
+                buf_write_u32(&b, meth_d_set_offs[i][j]);
+            }
+        }
+        for (uint32_t j = 0; j < c->virtual_method_count; j++) {
+            if (meth_v_set_offs[i][j]) {
+                char mkey[1024];
+                snprintf(mkey, sizeof(mkey), "%s->%s%s", c->descriptor, c->virtual_methods[j].name, c->virtual_methods[j].signature);
+                uint32_t mid = smali_pool_find(&ctx->methods, mkey);
+                buf_write_u32(&b, mid == 0xFFFFFFFF ? 0 : mid);
+                buf_write_u32(&b, meth_v_set_offs[i][j]);
+            }
+        }
+    }
+    
+    // Free allocated structures
+    for (uint32_t i = 0; i < class_count; i++) {
+        if (class_annot_item_offs[i]) free(class_annot_item_offs[i]);
+        for (uint32_t j = 0; j < ctx->classes[i].direct_method_count; j++) if (meth_d_annot_item_offs[i][j]) free(meth_d_annot_item_offs[i][j]);
+        for (uint32_t j = 0; j < ctx->classes[i].virtual_method_count; j++) if (meth_v_annot_item_offs[i][j]) free(meth_v_annot_item_offs[i][j]);
+        free(meth_d_annot_item_offs[i]);
+        free(meth_v_annot_item_offs[i]);
+        free(meth_d_set_offs[i]);
+        free(meth_v_set_offs[i]);
+    }
+    free(class_annot_item_offs);
+    free(meth_d_annot_item_offs);
+    free(meth_v_annot_item_offs);
+    free(class_set_offs);
+    free(meth_d_set_offs);
+    free(meth_v_set_offs);
 
+    
     for (uint32_t i = 0; i < class_count; i++) {
         smali_class_def_t *c = &ctx->classes[i];
         uint32_t def_off = class_defs_off + i * 32;
@@ -712,13 +774,13 @@ int write_assembled_dex(smali_ctx_def_t *ctx, const char *out_dex) {
 
     // Annotation sections in the map list
     if (annot_dir_count > 0) {
-        entries[entry_count++] = (map_item_entry_t){0x2004, annot_dir_count, first_annot_dir_off};
+        entries[entry_count++] = (map_item_entry_t){0x2006, annot_dir_count, first_annot_dir_off};
     }
     if (annot_set_count > 0) {
-        entries[entry_count++] = (map_item_entry_t){0x2006, annot_set_count, first_annot_set_off};
+        entries[entry_count++] = (map_item_entry_t){0x1003, annot_set_count, first_annot_set_off};
     }
     if (annot_item_count > 0) {
-        entries[entry_count++] = (map_item_entry_t){0x2007, annot_item_count, first_annot_item_off};
+        entries[entry_count++] = (map_item_entry_t){0x2004, annot_item_count, first_annot_item_off};
     }
 
     entries[entry_count++] = (map_item_entry_t){0x1000, 1, map_off};
