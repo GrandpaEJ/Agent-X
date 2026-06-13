@@ -16,7 +16,7 @@
 
 ## ⚡ Overview
 
-**Agent-X** is a production-grade, autonomous AI agent written from scratch in pure C11. Operating with an extremely tiny RAM footprint (< 500 KB) and compiling to a static binary with **zero dynamic library dependencies**, it is highly optimized for deployment on VPS, Debian/Ubuntu servers, and Termux (Android).
+**Agent-X** is an alpha-stage, autonomous AI agent written from scratch in pure C11. Operating with an extremely tiny RAM footprint (~1.7 MB) and compiling to a static binary with **zero dynamic library dependencies**, it is highly optimized for deployment on VPS, Debian/Ubuntu servers, and Termux (Android).
 
 Beyond being an AI orchestrator, Agent-X is also a **Full-Fledged Native Android Reverse Engineering Suite**. It features a high-performance Dalvik Smali compiler and DEX parser, enabling Android APK modifications without requiring any Java/JDK installations.
 
@@ -137,6 +137,15 @@ Agent-X can be extended in seconds. To add a new tool (e.g., `get_weather`):
    ```
 
 Agent-X automatically detects, registers, and executes the tool. LLM arguments are injected securely as environment variables prefixed with `ARG_` (e.g., `$ARG_city`).
+
+## 📊 Benchmarks & Footprint
+
+Agent-X is engineered for maximum efficiency. Below are the current benchmarks (v0.4.0) running on a standard Linux environment:
+
+- **Static Binary Size**: ~131 KB (Full build) / ~80 KB (Pico build)
+- **Base RAM Footprint (Idle)**: ~1.7 MB (RSS)
+- **Peak RAM (Smali Assembly)**: ~53 MB (Assembling 113 classes into a full `.dex` file)
+- **Execution Time (Assembly)**: ~0.12 seconds
 
 ## 📲 Dalvik & Smali Pipelines
 
