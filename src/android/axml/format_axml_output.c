@@ -163,6 +163,8 @@ char *axml_get_xml(axml_ctx *ctx) {
                 } else if (vt == 0x12) {
                     append(&ctx->xml, &len, &cap, vd ? "true" : "false");
                 } else if (vt == 0x11) {
+                    append_fmt(&ctx->xml, &len, &cap, "0x%x", vd);
+                } else if (vt == 0x04) {
                     float f;
                     memcpy(&f, &vd, 4);
                     append_fmt(&ctx->xml, &len, &cap, "%g", f);

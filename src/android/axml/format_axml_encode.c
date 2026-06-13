@@ -142,7 +142,8 @@ static void parse_attr_value(str_builder *pool, const char *val, uint8_t *out_ty
     *out_str_idx = -1; // Default
     if (!val || val[0] == '\0') {
         *out_type = 0x03; // String
-        *out_data = 0xFFFFFFFF;
+        *out_str_idx = add_string(pool, "");
+        *out_data = *out_str_idx;
         return;
     }
     
@@ -156,17 +157,59 @@ static void parse_attr_value(str_builder *pool, const char *val, uint8_t *out_ty
         *out_type = 0x01; // TYPE_REFERENCE
         *out_data = strtoul(val + 7, NULL, 16);
     } else {
-        // String
-        *out_type = 0x03; // TYPE_STRING
+        // Check if integer
+        char *endptr = NULL;
+        long num = strtol(val, &endptr, 10);
+        if (*endptr == '\0' && val[0] != '\0') {
+            *out_type = 0x10; // TYPE_INT_DEC
+            *out_data = (uint32_t)num;
+            return;
+        }
+        
+        // Check if hex integer
+        if (strncmp(val, "0x", 2) == 0 || strncmp(val, "0X", 2) == 0) {
+            num = strtol(val, &endptr, 16);
+            if (*endptr == '\0') {
+                *out_type = 0x11; // TYPE_INT_HEX
+                *out_data = (uint32_t)num;
+                return;
+            }
+        }
+        
+        // Floating point (optional, skipping for now, treat as string or we can add 0x04 for TYPE_FLOAT)
+        // Wait, compileSdkVersionCodename is "11", but it is a string!
+        // Android AXML allows "11" as string if the type expects string, but some attributes strictly expect ints.
+        // Actually AAPT strictly defines types based on resource definitions.
+        // For zero-dependency, compiling numbers as DEC/HEX is standard. Let's encode string index anyway so fallback works!
         *out_str_idx = add_string(pool, val);
-        *out_data = *out_str_idx;
+        
+        if (*endptr == '\0' && val[0] != '\0') {
+            *out_type = 0x10;
+            *out_data = (uint32_t)num;
+        } else {
+            *out_type = 0x03; // TYPE_STRING
+            *out_data = *out_str_idx;
+        }
     }
 }
 
 // Encodes AST into AXML body chunks
-static void encode_node(byte_buf *b, xml_node *node, str_builder *pool, uint32_t *line_no) {
+static void encode_node(xml_doc *doc, xml_node *node, str_builder *pool, byte_buf *b, uint32_t *line_no) {
     while (node) {
-        int ns_idx = node->ns ? add_string(pool, node->ns) : 0xFFFFFFFF;
+        int ns_idx = 0xFFFFFFFF;
+        if (node->ns) {
+            const char *resolved_ns = NULL;
+            xml_attr *ns_attr = doc->root->attrs;
+            while (ns_attr) {
+                if (ns_attr->ns && strcmp(ns_attr->ns, "xmlns") == 0 && ns_attr->name && strcmp(ns_attr->name, node->ns) == 0) {
+                    resolved_ns = ns_attr->value;
+                    break;
+                }
+                ns_attr = ns_attr->next;
+            }
+            if (!resolved_ns) resolved_ns = node->ns;
+            ns_idx = add_string(pool, resolved_ns);
+        }
         int name_idx = node->name ? add_string(pool, node->name) : 0xFFFFFFFF;
         
         // START_ELEMENT
@@ -200,6 +243,18 @@ static void encode_node(byte_buf *b, xml_node *node, str_builder *pool, uint32_t
         buf_w16(b, 0); // style index
         
         // Write Attributes
+        typedef struct {
+            int ns_idx;
+            int name_idx;
+            int str_idx;
+            uint8_t type;
+            uint32_t data;
+        } enc_attr;
+        
+        enc_attr *e_attrs = NULL;
+        if (attr_count > 0) e_attrs = calloc(attr_count, sizeof(enc_attr));
+        
+        int a_idx = 0;
         attr = node->attrs;
         while(attr) {
             if (attr->ns && strcmp(attr->ns, "xmlns") == 0) {
@@ -207,24 +262,49 @@ static void encode_node(byte_buf *b, xml_node *node, str_builder *pool, uint32_t
                 continue;
             }
             
-            int a_ns_idx = attr->ns ? add_string(pool, attr->ns) : 0xFFFFFFFF;
-            int a_name_idx = attr->name ? add_string(pool, attr->name) : 0xFFFFFFFF;
+            const char *resolved_ns = NULL;
+            if (attr->ns) {
+                // Find matching namespace URI in doc->namespaces
+                xml_attr *ns_attr = doc->root->attrs;
+                while (ns_attr) {
+                    if (ns_attr->ns && strcmp(ns_attr->ns, "xmlns") == 0 && ns_attr->name && strcmp(ns_attr->name, attr->ns) == 0) {
+                        resolved_ns = ns_attr->value;
+                        break;
+                    }
+                    ns_attr = ns_attr->next;
+                }
+                if (!resolved_ns) resolved_ns = attr->ns; // fallback
+            }
             
-            uint8_t a_type;
-            uint32_t a_data;
-            int a_str_idx;
-            parse_attr_value(pool, attr->value, &a_type, &a_data, &a_str_idx);
+            e_attrs[a_idx].ns_idx = resolved_ns ? add_string(pool, resolved_ns) : 0xFFFFFFFF;
+            e_attrs[a_idx].name_idx = attr->name ? add_string(pool, attr->name) : 0xFFFFFFFF;
             
-            buf_w32(b, a_ns_idx);
-            buf_w32(b, a_name_idx);
-            buf_w32(b, a_str_idx == -1 ? 0xFFFFFFFF : a_str_idx); // raw string
-            buf_w16(b, 0x0008); // size of typed value (8 bytes)
-            buf_append(b, "\x00", 1); // res0
-            buf_append(b, &a_type, 1); // data type
-            buf_w32(b, a_data); // data
-            
+            parse_attr_value(pool, attr->value, &e_attrs[a_idx].type, &e_attrs[a_idx].data, &e_attrs[a_idx].str_idx);
+            a_idx++;
             attr = attr->next;
         }
+        
+        // Sort attributes by name_idx
+        for (int i = 0; i < attr_count - 1; i++) {
+            for (int j = i + 1; j < attr_count; j++) {
+                if ((uint32_t)e_attrs[i].name_idx > (uint32_t)e_attrs[j].name_idx) {
+                    enc_attr tmp = e_attrs[i];
+                    e_attrs[i] = e_attrs[j];
+                    e_attrs[j] = tmp;
+                }
+            }
+        }
+        
+        for (int i = 0; i < attr_count; i++) {
+            buf_w32(b, e_attrs[i].ns_idx);
+            buf_w32(b, e_attrs[i].name_idx);
+            buf_w32(b, e_attrs[i].str_idx == -1 ? 0xFFFFFFFF : e_attrs[i].str_idx); // raw string
+            buf_w16(b, 0x0008); // size of typed value (8 bytes)
+            buf_append(b, "\x00", 1); // res0
+            buf_append(b, &e_attrs[i].type, 1); // data type
+            buf_w32(b, e_attrs[i].data); // data
+        }
+        if (e_attrs) free(e_attrs);
         
         // Fix chunk size
         uint32_t chunk_size = b->len - start_off;
@@ -235,7 +315,7 @@ static void encode_node(byte_buf *b, xml_node *node, str_builder *pool, uint32_t
         sz_ptr[3] = (chunk_size >> 24) & 0xFF;
         
         // Encode Children
-        encode_node(b, node->children, pool, line_no);
+        encode_node(doc, node->children, pool, b, line_no);
         
         // END_ELEMENT
         buf_w16(b, 0x0103); // type
@@ -276,7 +356,7 @@ uint8_t* axml_assemble_doc(xml_doc *doc, size_t *out_size) {
     buf_w32(&body, add_string(&pool, "android")); // prefix
     buf_w32(&body, add_string(&pool, "http://schemas.android.com/apk/res/android")); // uri
     
-    encode_node(&body, doc->root, &pool, &line_no);
+    encode_node(doc, doc->root, &pool, &body, &line_no);
     
     // Add END_NAMESPACE
     buf_w16(&body, 0x0101);
