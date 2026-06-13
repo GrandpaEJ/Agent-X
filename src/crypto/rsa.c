@@ -15,32 +15,58 @@ typedef struct {
     int bits;
 } rsa_key;
 
-// Mult and reduce in one pass (schoolbook + conditional subtract)
+static int cmp_shift(const uint32_t *a, const uint32_t *m, int limbs, int shift_bits) {
+    int shift_words = shift_bits / 32;
+    int shift_rem = shift_bits % 32;
+    for (int i = limbs * 2 - 1; i >= 0; i--) {
+        uint32_t m_val = 0;
+        if (i >= shift_words && i - shift_words <= limbs) {
+            uint32_t lo = (i - shift_words < limbs) ? m[i - shift_words] : 0;
+            uint32_t hi = (i - shift_words - 1 >= 0 && i - shift_words - 1 < limbs) ? m[i - shift_words - 1] : 0;
+            m_val = (lo << shift_rem);
+            if (shift_rem > 0) m_val |= (hi >> (32 - shift_rem));
+        }
+        if (a[i] > m_val) return 1;
+        if (a[i] < m_val) return -1;
+    }
+    return 0;
+}
+
+static void sub_shift(uint32_t *a, const uint32_t *m, int limbs, int shift_bits) {
+    int shift_words = shift_bits / 32;
+    int shift_rem = shift_bits % 32;
+    uint64_t borrow = 0;
+    for (int i = 0; i < limbs * 2; i++) {
+        uint32_t m_val = 0;
+        if (i >= shift_words && i - shift_words <= limbs) {
+            uint32_t lo = (i - shift_words < limbs) ? m[i - shift_words] : 0;
+            uint32_t hi = (i - shift_words - 1 >= 0 && i - shift_words - 1 < limbs) ? m[i - shift_words - 1] : 0;
+            m_val = (lo << shift_rem);
+            if (shift_rem > 0) m_val |= (hi >> (32 - shift_rem));
+        }
+        uint64_t sub = (uint64_t)m_val + borrow;
+        if (a[i] < (sub & 0xFFFFFFFF)) borrow = 1; else borrow = 0;
+        a[i] -= (uint32_t)sub;
+    }
+}
+
 static void mul_mod(uint32_t *r, const uint32_t *a, const uint32_t *b,
                     const uint32_t *m, int limbs) {
-    uint64_t tmp[MAX_LIMBS * 2] = {0};
+    uint32_t tmp[MAX_LIMBS * 2] = {0};
     for (int i = 0; i < limbs; i++) {
         uint64_t carry = 0;
         for (int j = 0; j < limbs; j++) {
-            tmp[i + j] += (uint64_t)a[i] * b[j] + carry;
-            carry = tmp[i + j] >> 32;
-            tmp[i + j] &= 0xFFFFFFFF;
+            uint64_t prod = (uint64_t)a[i] * b[j] + tmp[i + j] + carry;
+            tmp[i + j] = (uint32_t)prod;
+            carry = prod >> 32;
         }
-        tmp[i + limbs] = carry;
+        tmp[i + limbs] = (uint32_t)carry;
     }
-    // Barrett reduction
-    for (int i = limbs * 2 - 1; i >= limbs; i--) {
-        if (tmp[i] == 0) continue;
-        uint64_t q = tmp[i];
-        uint64_t borrow = 0;
-        for (int j = 0; j < limbs; j++) {
-            uint64_t sub = (uint64_t)q * m[j] + borrow;
-            if (tmp[i - limbs + j] < (sub & 0xFFFFFFFF)) borrow = 1;
-            else borrow = 0;
-            tmp[i - limbs + j] -= (uint32_t)sub;
-            borrow += sub >> 32;
+
+    for (int i = limbs * 32; i >= 0; i--) {
+        if (cmp_shift(tmp, m, limbs, i) >= 0) {
+            sub_shift(tmp, m, limbs, i);
         }
-        tmp[i] -= borrow;
     }
     memcpy(r, tmp, limbs * 4);
 }
@@ -127,7 +153,7 @@ static int parse_pkcs8_der(const uint8_t *der, size_t len, rsa_key *key) {
     memset(key->m, 0, sizeof(key->m));
     if (rsa[idx] == 0) { idx++; nlen--; }
     for (int i = 0; i < nlen; i++)
-        key->m[(nlen - 1 - i) / 4] |= (uint32_t)rsa[idx + i] << ((i % 4) * 8);
+        key->m[(nlen - 1 - i) / 4] |= (uint32_t)rsa[idx + i] << (((nlen - 1 - i) % 4) * 8);
     key->bits = nlen * 8;
     idx += nlen;
 
@@ -146,7 +172,7 @@ static int parse_pkcs8_der(const uint8_t *der, size_t len, rsa_key *key) {
     memset(key->d, 0, sizeof(key->d));
     if (rsa[idx] == 0) { idx++; dlen--; }
     for (int i = 0; i < dlen; i++)
-        key->d[(dlen - 1 - i) / 4] |= (uint32_t)rsa[idx + i] << ((i % 4) * 8);
+        key->d[(dlen - 1 - i) / 4] |= (uint32_t)rsa[idx + i] << (((dlen - 1 - i) % 4) * 8);
 
     return 0;
 }
