@@ -356,7 +356,9 @@ cJSON* tools_get_definitions(void) {
         "{\"type\": \"function\", \"function\": {\"name\": \"read_axml\", \"description\": \"Decode Android Binary XML (AXML) to human-readable XML text\", \"parameters\": {\"type\": \"object\", \"properties\": {\"path\": {\"type\": \"string\", \"description\": \"Path to the binary XML file\"}}, \"required\": [\"path\"]}}},"
         "{\"type\": \"function\", \"function\": {\"name\": \"axml_assemble\", \"description\": \"Encode Plaintext XML back to Android Binary XML (AXML)\", \"parameters\": {\"type\": \"object\", \"properties\": {\"src\": {\"type\": \"string\", \"description\": \"Path to the plaintext XML file\"}, \"out\": {\"type\": \"string\", \"description\": \"Path to the output binary XML file\"}}, \"required\": [\"src\", \"out\"]}}},"
         "{\"type\": \"function\", \"function\": {\"name\": \"read_dex\", \"description\": \"Parse and dump DEX bytecode file contents or disassemble into a directory\", \"parameters\": {\"type\": \"object\", \"properties\": {\"path\": {\"type\": \"string\", \"description\": \"Path to the DEX file\"}, \"out_dir\": {\"type\": \"string\", \"description\": \"Optional target directory to disassemble all classes into as Smali files\"}}, \"required\": [\"path\"]}}},"
-        "{\"type\": \"function\", \"function\": {\"name\": \"analyze_apk\", \"description\": \"Analyze an APK file: decode manifest, parse DEX classes, and list files\", \"parameters\": {\"type\": \"object\", \"properties\": {\"path\": {\"type\": \"string\", \"description\": \"Path to the APK file\"}}, \"required\": [\"path\"]}}},"
+        "{\"type\": \"function\", \"function\": {\"name\": \"decode_apk\", \"description\": \"Fully decompile an APK into a directory, converting DEX files to Smali source\", \"parameters\": {\"type\": \"object\", \"properties\": {\"path\": {\"type\": \"string\", \"description\": \"Path to the APK file\"}, \"out_dir\": {\"type\": \"string\", \"description\": \"Output directory for decoded files\"}}, \"required\": [\"path\", \"out_dir\"]}}},"
+        "{\"type\": \"function\", \"function\": {\"name\": \"build_apk\", \"description\": \"Fully rebuild an APK from a decoded directory, automatically assembling Smali files and signing\", \"parameters\": {\"type\": \"object\", \"properties\": {\"src_dir\": {\"type\": \"string\", \"description\": \"Path to the decoded APK directory\"}, \"out_apk\": {\"type\": \"string\", \"description\": \"Output APK file path\"}, \"key_path\": {\"type\": \"string\", \"description\": \"Optional RSA private key path for signing\"}, \"cert_path\": {\"type\": \"string\", \"description\": \"Optional custom certificate path for signing\"}}, \"required\": [\"src_dir\", \"out_apk\"]}}},"
+        "{\"type\": \"function\", \"function\": {\"name\": \"analyze_apk\", \"description\": \"Analyze an APK file, dumping its manifest, classes, and entries\", \"parameters\": {\"type\": \"object\", \"properties\": {\"path\": {\"type\": \"string\", \"description\": \"Path to the APK file\"}}, \"required\": [\"path\"]}}},"
         "{\"type\": \"function\", \"function\": {\"name\": \"disasm_dex\", \"description\": \"Disassemble a DEX class to Smali\", \"parameters\": {\"type\": \"object\", \"properties\": {\"path\": {\"type\": \"string\", \"description\": \"Path to the DEX file\"}, \"class\": {\"type\": \"number\", \"description\": \"Class index to disassemble (default: 0)\"}}, \"required\": [\"path\"]}}},"
         "{\"type\": \"function\", \"function\": {\"name\": \"smali_assemble\", \"description\": \"Assemble smali directory into a DEX file\", \"parameters\": {\"type\": \"object\", \"properties\": {\"src_dir\": {\"type\": \"string\", \"description\": \"Path to smali source directory\"}, \"out_dex\": {\"type\": \"string\", \"description\": \"Output DEX file path\"}}, \"required\": [\"src_dir\", \"out_dex\"]}}},"
         "{\"type\": \"function\", \"function\": {\"name\": \"repack_apk\", \"description\": \"Repack contents of an extracted APK folder back into a ZIP/APK\", \"parameters\": {\"type\": \"object\", \"properties\": {\"dir\": {\"type\": \"string\", \"description\": \"Path to directory with APK contents\"}, \"output\": {\"type\": \"string\", \"description\": \"Output APK path\"}}, \"required\": [\"dir\", \"output\"]}}},"
@@ -676,6 +678,40 @@ static char* execute_axml_assemble(cJSON* args) {
     
     char buf[256];
     snprintf(buf, sizeof(buf), "{\"status\": 0, \"output\": \"%s\"}", out_obj->valuestring);
+    return strdup(buf);
+}
+
+static char* execute_decode_apk(cJSON* args) {
+    cJSON* path_obj = cJSON_GetObjectItem(args, "path");
+    cJSON* out_dir_obj = cJSON_GetObjectItem(args, "out_dir");
+    if (!path_obj || !cJSON_IsString(path_obj) || !out_dir_obj || !cJSON_IsString(out_dir_obj))
+        return strdup("{\"error\": \"Missing path or out_dir\"}");
+    
+    int ret = apk_decode(path_obj->valuestring, out_dir_obj->valuestring);
+    if (ret != 0) return strdup("{\"error\": \"Failed to decode APK\"}");
+    
+    char buf[512];
+    snprintf(buf, sizeof(buf), "{\"status\": \"success\", \"output_dir\": \"%s\"}", out_dir_obj->valuestring);
+    return strdup(buf);
+}
+
+static char* execute_build_apk(cJSON* args) {
+    cJSON* src_dir_obj = cJSON_GetObjectItem(args, "src_dir");
+    cJSON* out_apk_obj = cJSON_GetObjectItem(args, "out_apk");
+    cJSON* key_path_obj = cJSON_GetObjectItem(args, "key_path");
+    cJSON* cert_path_obj = cJSON_GetObjectItem(args, "cert_path");
+    
+    if (!src_dir_obj || !cJSON_IsString(src_dir_obj) || !out_apk_obj || !cJSON_IsString(out_apk_obj))
+        return strdup("{\"error\": \"Missing src_dir or out_apk\"}");
+        
+    const char *key_path = (key_path_obj && cJSON_IsString(key_path_obj)) ? key_path_obj->valuestring : NULL;
+    const char *cert_path = (cert_path_obj && cJSON_IsString(cert_path_obj)) ? cert_path_obj->valuestring : NULL;
+
+    int ret = apk_build(src_dir_obj->valuestring, out_apk_obj->valuestring, key_path, cert_path);
+    if (ret != 0) return strdup("{\"error\": \"Failed to build APK\"}");
+    
+    char buf[512];
+    snprintf(buf, sizeof(buf), "{\"status\": \"success\", \"output_apk\": \"%s\"}", out_apk_obj->valuestring);
     return strdup(buf);
 }
 
@@ -1056,7 +1092,11 @@ char* tools_execute(const char* name, cJSON* args) {
     if (strcmp(name, "read_axml") == 0) return execute_read_axml(args);
     if (strcmp(name, "axml_assemble") == 0) return execute_axml_assemble(args);
     if (strcmp(name, "read_dex") == 0) return execute_read_dex(args);
-    if (strcmp(name, "analyze_apk") == 0) return execute_analyze_apk(args);
+    char *res = NULL;
+    if (strcmp(name, "decode_apk") == 0) res = execute_decode_apk(args);
+    else if (strcmp(name, "build_apk") == 0) res = execute_build_apk(args);
+    else if (strcmp(name, "analyze_apk") == 0) res = execute_analyze_apk(args);
+    if (res) return res;
     if (strcmp(name, "disasm_dex") == 0) return execute_disasm_dex(args);
     if (strcmp(name, "smali_assemble") == 0) return execute_smali_assemble(args);
     if (strcmp(name, "repack_apk") == 0) return execute_repack_apk(args);

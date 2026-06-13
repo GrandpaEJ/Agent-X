@@ -57,4 +57,7 @@ char *adb_devices(void);
 int adb_push_file(const char *local_path, const char *remote_path);
 int adb_pull_file(const char *remote_path, const char *local_path);
 
+int apk_decode(const char *apk_path, const char *out_dir);
+int apk_build(const char *src_dir, const char *out_apk, const char *key_path, const char *cert_path);
+
 #endif
