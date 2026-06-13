@@ -354,6 +354,8 @@ cJSON* tools_get_definitions(void) {
         "{\"type\": \"function\", \"function\": {\"name\": \"adb_pull\", \"description\": \"Pull a file from an ADB-connected device\", \"parameters\": {\"type\": \"object\", \"properties\": {\"remote\": {\"type\": \"string\", \"description\": \"Remote file path on device\"}, \"local\": {\"type\": \"string\", \"description\": \"Local destination path\"}}, \"required\": [\"remote\", \"local\"]}}},"
         "{\"type\": \"function\", \"function\": {\"name\": \"adb_uninstall\", \"description\": \"Uninstall a package from an ADB-connected device\", \"parameters\": {\"type\": \"object\", \"properties\": {\"package\": {\"type\": \"string\", \"description\": \"Package name to uninstall\"}}, \"required\": [\"package\"]}}},"
         "{\"type\": \"function\", \"function\": {\"name\": \"read_axml\", \"description\": \"Decode Android Binary XML (AXML) to human-readable XML text\", \"parameters\": {\"type\": \"object\", \"properties\": {\"path\": {\"type\": \"string\", \"description\": \"Path to the binary XML file\"}}, \"required\": [\"path\"]}}},"
+        "{\"type\": \"function\", \"function\": {\"name\": \"axml_assemble\", \"description\": \"Encode Plaintext XML back to Android Binary XML (AXML)\", \"parameters\": {\"type\": \"object\", \"properties\": {\"src\": {\"type\": \"string\", \"description\": \"Path to the plaintext XML file\"}, \"out\": {\"type\": \"string\", \"description\": \"Path to the output binary XML file\"}}, \"required\": [\"src\", \"out\"]}}},"
+
         "{\"type\": \"function\", \"function\": {\"name\": \"read_dex\", \"description\": \"Parse and dump DEX bytecode file contents or disassemble into a directory\", \"parameters\": {\"type\": \"object\", \"properties\": {\"path\": {\"type\": \"string\", \"description\": \"Path to the DEX file\"}, \"out_dir\": {\"type\": \"string\", \"description\": \"Optional target directory to disassemble all classes into as Smali files\"}}, \"required\": [\"path\"]}}},"
         "{\"type\": \"function\", \"function\": {\"name\": \"analyze_apk\", \"description\": \"Analyze an APK file: decode manifest, parse DEX classes, and list files\", \"parameters\": {\"type\": \"object\", \"properties\": {\"path\": {\"type\": \"string\", \"description\": \"Path to the APK file\"}}, \"required\": [\"path\"]}}},"
         "{\"type\": \"function\", \"function\": {\"name\": \"disasm_dex\", \"description\": \"Disassemble a DEX class to Smali\", \"parameters\": {\"type\": \"object\", \"properties\": {\"path\": {\"type\": \"string\", \"description\": \"Path to the DEX file\"}, \"class\": {\"type\": \"number\", \"description\": \"Class index to disassemble (default: 0)\"}}, \"required\": [\"path\"]}}},"
@@ -659,6 +661,23 @@ static char* execute_read_axml(cJSON* args) {
     cJSON_Delete(res);
     axml_free(ctx);
     return res_str;
+}
+
+static char* execute_axml_assemble(cJSON* args) {
+    cJSON *src_obj = cJSON_GetObjectItem(args, "src");
+    cJSON *out_obj = cJSON_GetObjectItem(args, "out");
+    if (!src_obj || !cJSON_IsString(src_obj) || !out_obj || !cJSON_IsString(out_obj)) {
+        return strdup("{\"error\": \"Missing src or out path\"}");
+    }
+    
+    int ret = axml_assemble(src_obj->valuestring, out_obj->valuestring);
+    if (ret != 0) {
+        return strdup("{\"error\": \"Failed to assemble AXML\"}");
+    }
+    
+    char buf[256];
+    snprintf(buf, sizeof(buf), "{\"status\": 0, \"output\": \"%s\"}", out_obj->valuestring);
+    return strdup(buf);
 }
 
 static char* execute_analyze_apk(cJSON* args) {
@@ -1010,6 +1029,7 @@ char* tools_execute(const char* name, cJSON* args) {
     if (strcmp(name, "adb_pull") == 0) return execute_adb_pull(args);
     if (strcmp(name, "adb_uninstall") == 0) return execute_adb_uninstall(args);
     if (strcmp(name, "read_axml") == 0) return execute_read_axml(args);
+    if (strcmp(name, "axml_assemble") == 0) return execute_axml_assemble(args);
     if (strcmp(name, "read_dex") == 0) return execute_read_dex(args);
     if (strcmp(name, "analyze_apk") == 0) return execute_analyze_apk(args);
     if (strcmp(name, "disasm_dex") == 0) return execute_disasm_dex(args);

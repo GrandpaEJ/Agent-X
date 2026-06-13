@@ -2,7 +2,7 @@
 #include <string.h>
 #include <ctype.h>
 #include <stdio.h>
-#include "axml_xml_parser.h"
+#include "format_axml_xml_parser.h"
 
 static void skip_ws(const char **p) {
     while (**p && isspace((unsigned char)**p)) (*p)++;

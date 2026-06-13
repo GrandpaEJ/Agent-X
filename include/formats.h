@@ -27,6 +27,7 @@ int zipalign_file(const char *in_path, const char *out_path, int alignment);
 axml_ctx *axml_parse(const uint8_t *data, size_t size);
 char *axml_get_xml(axml_ctx *ctx);
 void axml_free(axml_ctx *ctx);
+int axml_assemble(const char *src_xml, const char *out_axml);
 
 // DEX (reader)
 dex_ctx *dex_parse(const uint8_t *data, size_t size);
