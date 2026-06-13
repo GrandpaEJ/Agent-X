@@ -6,7 +6,7 @@ INC = -Iinclude -Ivendor/cJSON -Ivendor/linenoise
 LTO = -flto -ffunction-sections -fdata-sections
 
 CFLAGS = $(OPT) $(WARN) $(STD) $(INC) $(LTO)
-LDFLAGS = $(LTO)
+LDFLAGS = -Wl,--gc-sections -Wl,--strip-all $(LTO)
 
 SRC_DIRS = src src/core src/net src/tools src/formats src/formats/zip src/android src/android/smali src/android/adb src/android/axml src/android/dex src/android/apk src/crypto
 VENDOR_DIR = vendor
