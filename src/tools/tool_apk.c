@@ -157,21 +157,13 @@ char* execute_resign_apk(cJSON* args) {
     int do_v3 = strstr(scheme, "v3") != NULL;
     if (!do_v1 && !do_v2 && !do_v3) do_v1 = 1; // default
     
-    if (custom_cert && do_v1) {
-        printf("[WARN] V1 signing does not currently support dynamic certificates. Disabling V1 and using V2/V3 only.\n");
-        do_v1 = 0;
-        if (!do_v2 && !do_v3) {
-            do_v2 = 1; // default to v2 if they requested custom key without schemes
-        }
-    }
-    
     int needs_v2_v3 = do_v2 || do_v3;
 
     char tmp_path[4096];
     snprintf(tmp_path, sizeof(tmp_path), "%s.tmp.apk", path_obj->valuestring);
     
     if (do_v1) {
-        if (apk_sign_v1(path_obj->valuestring, needs_v2_v3 ? tmp_path : out_path, &key, do_v2, do_v3) != 0) {
+        if (apk_sign_v1(path_obj->valuestring, needs_v2_v3 ? tmp_path : out_path, &key, do_v2, do_v3, custom_cert, custom_cert_len) != 0) {
             return strdup("{\"error\": \"Native APK v1 signing failed\"}");
         }
     }
