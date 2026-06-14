@@ -199,6 +199,7 @@ int apk_build(const char *src_dir, const char *out_apk, const char *key_path, co
     if (key_path) {
         rsa_key key;
         if (rsa_load_key(key_path, &key) != 0) {
+            printf("rsa_load_key failed\n");
             remove(tmp_unaligned);
             return -1;
         }
@@ -224,6 +225,7 @@ int apk_build(const char *src_dir, const char *out_apk, const char *key_path, co
         char tmp_signed1[1024];
         snprintf(tmp_signed1, sizeof(tmp_signed1), "%s.signed1.unaligned.zip", out_apk);
         if (apk_sign_v1(tmp_unaligned, tmp_signed1, &key, 1, 1) != 0) {
+            printf("apk_sign_v1 failed\n");
             remove(tmp_unaligned);
             if (custom_cert) free(custom_cert);
             return -1;
@@ -234,6 +236,7 @@ int apk_build(const char *src_dir, const char *out_apk, const char *key_path, co
         char tmp_aligned[1024];
         snprintf(tmp_aligned, sizeof(tmp_aligned), "%s.aligned.zip", out_apk);
         if (zipalign_file(tmp_signed1, tmp_aligned, 4) != 0) {
+            printf("zipalign_file failed\n");
             remove(tmp_signed1);
             if (custom_cert) free(custom_cert);
             return -1;
@@ -242,6 +245,7 @@ int apk_build(const char *src_dir, const char *out_apk, const char *key_path, co
 
         // 3. Sign v2/v3
         if (apk_sign_v2_v3(tmp_aligned, out_apk, &key, 1, 1, custom_cert, custom_cert_len) != 0) {
+            printf("apk_sign_v2_v3 failed, fallback to v1\n");
             rename(tmp_aligned, out_apk); // Fallback to v1 only if v2 fails
         } else {
             remove(tmp_aligned);
@@ -250,6 +254,7 @@ int apk_build(const char *src_dir, const char *out_apk, const char *key_path, co
     } else {
         // No signing, just zipalign
         if (zipalign_file(tmp_unaligned, out_apk, 4) != 0) {
+            printf("zipalign_file failed (no sig)\n");
             remove(tmp_unaligned);
             return -1;
         }
