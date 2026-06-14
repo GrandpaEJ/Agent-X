@@ -15,12 +15,12 @@ char *base64_encode(const uint8_t *data, size_t input_length, size_t *output_len
         uint32_t octet_b = i < input_length ? (unsigned char)data[i++] : 0;
         uint32_t octet_c = i < input_length ? (unsigned char)data[i++] : 0;
 
-        uint32_t triple = (octet_a << 0x10) + (octet_b << 0x08) + octet_c;
+        uint32_t triple = (octet_a << 16) | (octet_b << 8) | octet_c;
 
-        encoded_data[j++] = base64_table[(triple >> 3 * 6) & 0x3F];
-        encoded_data[j++] = base64_table[(triple >> 2 * 6) & 0x3F];
-        encoded_data[j++] = base64_table[(triple >> 1 * 6) & 0x3F];
-        encoded_data[j++] = base64_table[(triple >> 0 * 6) & 0x3F];
+        encoded_data[j++] = base64_table[(triple >> 18) & 0x3F];
+        encoded_data[j++] = base64_table[(triple >> 12) & 0x3F];
+        encoded_data[j++] = base64_table[(triple >> 6) & 0x3F];
+        encoded_data[j++] = base64_table[(triple >> 0) & 0x3F];
     }
 
     for (size_t i = 0; i < (3 - input_length % 3) % 3; i++) {
