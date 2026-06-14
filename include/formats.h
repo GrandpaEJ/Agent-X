@@ -37,6 +37,8 @@ const char *arsc_get_string(arsc_ctx *ctx, uint32_t index);
 int arsc_patch_string(arsc_ctx *ctx, uint32_t index, const char *new_str);
 uint8_t *arsc_build(arsc_ctx *ctx, size_t *out_size);
 void arsc_free(arsc_ctx *ctx);
+int arsc_dump_toml(const char *arsc_path, const char *toml_path);
+int arsc_compile_toml(const char *arsc_path, const char *toml_path, const char *out_arsc);
 
 // DEX (reader)
 dex_ctx *dex_parse(const uint8_t *data, size_t size);
