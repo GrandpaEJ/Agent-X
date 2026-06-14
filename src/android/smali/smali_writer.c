@@ -21,6 +21,12 @@ typedef struct {
     uint32_t offset;
 } map_item_entry_t;
 
+static int comp_u32_tl(const void *a, const void *b) {
+    uint32_t ua = *(const uint32_t *)a;
+    uint32_t ub = *(const uint32_t *)b;
+    return (ua > ub) - (ua < ub);
+}
+
 static int comp_map_entries(const void *a, const void *b) {
     const map_item_entry_t *ma = (const map_item_entry_t *)a;
     const map_item_entry_t *mb = (const map_item_entry_t *)b;
@@ -1085,22 +1091,29 @@ int write_assembled_dex(smali_ctx_def_t *ctx, const char *out_dex) {
 
     uint32_t first_type_list_off = 0;
     uint32_t type_list_count = 0;
+    uint32_t *all_tl_offs = malloc((proto_count + class_count) * sizeof(uint32_t));
+    uint32_t tl_offs_count = 0;
     for (uint32_t i = 0; i < proto_count; i++) {
         if (proto_param_offsets[i] != 0) {
-            if (first_type_list_off == 0 || proto_param_offsets[i] < first_type_list_off) {
-                first_type_list_off = proto_param_offsets[i];
-            }
-            type_list_count++;
+            all_tl_offs[tl_offs_count++] = proto_param_offsets[i];
         }
     }
     for (uint32_t i = 0; i < class_count; i++) {
         if (interfaces_offsets[i] != 0) {
-            if (first_type_list_off == 0 || interfaces_offsets[i] < first_type_list_off) {
-                first_type_list_off = interfaces_offsets[i];
-            }
-            type_list_count++;
+            all_tl_offs[tl_offs_count++] = interfaces_offsets[i];
         }
     }
+    if (tl_offs_count > 0) {
+        qsort(all_tl_offs, tl_offs_count, sizeof(uint32_t), comp_u32_tl);
+        first_type_list_off = all_tl_offs[0];
+        type_list_count = 1;
+        for (uint32_t i = 1; i < tl_offs_count; i++) {
+            if (all_tl_offs[i] != all_tl_offs[i - 1]) {
+                type_list_count++;
+            }
+        }
+    }
+    free(all_tl_offs);
     if (type_list_count > 0) {
         entries[entry_count++] = (map_item_entry_t){0x1001, type_list_count, first_type_list_off};
     }
