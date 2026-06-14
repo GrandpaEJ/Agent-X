@@ -222,13 +222,14 @@ int rsa_load_key(const char *path, rsa_key *key) {
     }
     size_t est = b64len / 4 * 3 + 4;
     uint8_t *der = malloc(est);
-    int di = 0, acc = 0, nb = 0;
+    int di = 0, nb = 0;
+    uint32_t acc = 0;
     for (size_t i = 0; i < b64len; i++) {
         char c = b64[i];
         if (c == '=') { break; }
         int v = b64t[(unsigned char)c];
         if (v < 0) continue;
-        acc = (acc << 6) | v;
+        acc = (acc << 6) | (uint32_t)v;
         nb += 6;
         if (nb >= 8) {
             nb -= 8;

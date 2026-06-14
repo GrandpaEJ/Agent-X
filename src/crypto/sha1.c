@@ -60,13 +60,16 @@ void sha1_final(sha1_ctx *ctx, uint8_t *out) {
     uint64_t bits = ctx->count << 3;
     size_t idx = ctx->count & 63;
     ctx->buf[idx++] = 0x80;
-    size_t pad = (idx > 56) ? (120 - idx) : (56 - idx);
-    memset(ctx->buf + idx, 0, pad);
+    if (idx > 56) {
+        memset(ctx->buf + idx, 0, 64 - idx);
+        sha1_transform(ctx, ctx->buf);
+        memset(ctx->buf, 0, 56);
+    } else {
+        memset(ctx->buf + idx, 0, 56 - idx);
+    }
     for (int i = 0; i < 8; i++)
         ctx->buf[56 + i] = (bits >> (56 - i*8)) & 0xFF;
     sha1_transform(ctx, ctx->buf);
-    if (pad + idx + 8 > 64)
-        sha1_transform(ctx, ctx->buf + 64);
     for (int i = 0; i < 5; i++) {
         out[i*4]   = ctx->state[i] >> 24;
         out[i*4+1] = ctx->state[i] >> 16;

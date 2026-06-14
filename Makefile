@@ -1,5 +1,5 @@
 CC = zig cc -target x86_64-linux-musl
-OPT = -Oz
+OPT = -O0 -g
 WARN = -Wall -Wextra
 STD = -std=c11 -D_POSIX_C_SOURCE=200809L
 INC = -Iinclude -Ivendor/cJSON -Ivendor/linenoise
@@ -26,7 +26,6 @@ all: $(TARGET)
 
 $(TARGET): $(OBJS) $(CJSON_OBJS) $(LINENOISE_OBJS)
 	$(CC) $(CFLAGS) -o $@ $^ $(LDFLAGS)
-	strip $@
 
 $(OBJ_DIR)/%.o: src/%.c | $(OBJ_DIR)
 	@mkdir -p $(dir $@)

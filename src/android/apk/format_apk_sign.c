@@ -16,6 +16,7 @@ char* generate_manifest(zip_archive *za, size_t *out_len) {
 
     for (int i = 0; i < num_entries; i++) {
         const char *name = zip_get_entry_name(za, i);
+        if (!name || strlen(name) == 0) continue;
         // Skip directories and existing META-INF files
         if (name[strlen(name) - 1] == '/') continue;
         if (strncmp(name, "META-INF/", 9) == 0) continue;
@@ -169,6 +170,7 @@ int apk_sign_v1(const char *in_apk, const char *out_apk, rsa_key *key, int do_v2
     int num_entries = zip_get_num_entries(za);
     for (int i = 0; i < num_entries; i++) {
         const char *name = zip_get_entry_name(za, i);
+        if (!name || strlen(name) == 0) continue;
         if (name[strlen(name) - 1] == '/') continue; // Skip directories
         if (strncmp(name, "META-INF/", 9) == 0) continue; // Skip old signatures
 
