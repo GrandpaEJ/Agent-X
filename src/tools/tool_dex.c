@@ -1,6 +1,7 @@
 #include "tools.h"
 #include "tools_internal.h"
 #include "formats.h"
+#include "smali_parser.h"
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -54,6 +55,124 @@ char* execute_smali_assemble(cJSON* args) {
     } else {
         cJSON_AddStringToObject(res, "error", "Assembly failed");
     }
+    char *res_str = cJSON_PrintUnformatted(res);
+    cJSON_Delete(res);
+    return res_str;
+}
+
+char* execute_smali_flow(cJSON* args) {
+    cJSON* path_obj = cJSON_GetObjectItem(args, "path");
+    cJSON* method_obj = cJSON_GetObjectItem(args, "method");
+    if (!path_obj || !cJSON_IsString(path_obj))
+        return strdup("{\"error\": \"Missing path to .smali file\"}");
+
+    smali_ctx_def_t ctx;
+    memset(&ctx, 0, sizeof(ctx));
+
+    // Check if path is a directory or file
+    struct stat st;
+    if (stat(path_obj->valuestring, &st) != 0)
+        return strdup("{\"error\": \"Path not found\"}");
+
+    if (S_ISDIR(st.st_mode)) {
+        // Directory: collect .smali files
+        char **files = NULL;
+        int file_count = 0;
+        DIR *d = opendir(path_obj->valuestring);
+        if (!d) return strdup("{\"error\": \"Cannot open directory\"}");
+        struct dirent *ent;
+        while ((ent = readdir(d)) != NULL) {
+            if (strcmp(ent->d_name, ".") == 0 || strcmp(ent->d_name, "..") == 0) continue;
+            char p[4096];
+            snprintf(p, sizeof(p), "%s/%s", path_obj->valuestring, ent->d_name);
+            struct stat ps;
+            if (stat(p, &ps) == 0 && S_ISDIR(ps.st_mode)) {
+                // Recurse into subdirectories
+                char **sub = NULL;
+                DIR *sd = opendir(p);
+                if (sd) {
+                    struct dirent *se;
+                    while ((se = readdir(sd)) != NULL) {
+                        if (strcmp(se->d_name, ".") == 0 || strcmp(se->d_name, "..") == 0) continue;
+                        char sp[4096];
+                        snprintf(sp, sizeof(sp), "%s/%s", p, se->d_name);
+                        if (strstr(se->d_name, ".smali")) {
+                            files = realloc(files, (file_count + 1) * sizeof(char *));
+                            files[file_count++] = strdup(sp);
+                        }
+                    }
+                    closedir(sd);
+                }
+                if (sub) free(sub);
+            } else if (strstr(ent->d_name, ".smali")) {
+                files = realloc(files, (file_count + 1) * sizeof(char *));
+                files[file_count++] = strdup(p);
+            }
+        }
+        closedir(d);
+
+        for (int i = 0; i < file_count; i++) {
+            parse_smali_file_path(&ctx, files[i]);
+            free(files[i]);
+        }
+        free(files);
+    } else {
+        // Single file
+        parse_smali_file_path(&ctx, path_obj->valuestring);
+    }
+
+    if (ctx.class_count == 0) {
+        return strdup("{\"error\": \"No classes found\"}");
+    }
+
+    // Generate flow graphs for each method
+    cJSON *res = cJSON_CreateObject();
+    cJSON *classes_arr = cJSON_CreateArray();
+
+    for (uint32_t ci = 0; ci < ctx.class_count; ci++) {
+        smali_class_def_t *cls = &ctx.classes[ci];
+        cJSON *cls_obj = cJSON_CreateObject();
+        cJSON_AddStringToObject(cls_obj, "class", cls->descriptor ? cls->descriptor : "");
+        cJSON *methods_arr = cJSON_CreateArray();
+
+        // Process all methods (direct + virtual)
+        smali_method_def_t *all_methods[] = {cls->direct_methods, cls->virtual_methods};
+        uint32_t all_counts[] = {cls->direct_method_count, cls->virtual_method_count};
+        const char *kind[] = {"direct", "virtual"};
+
+        for (int mk = 0; mk < 2; mk++) {
+            for (uint32_t mi = 0; mi < all_counts[mk]; mi++) {
+                smali_method_def_t *method = &all_methods[mk][mi];
+                // Build method signature
+                char sig[512];
+                if (method_obj && cJSON_IsString(method_obj) &&
+                    strstr(method->name, method_obj->valuestring) == NULL &&
+                    strstr(method->signature, method_obj->valuestring) == NULL &&
+                    strstr(method->name, method_obj->valuestring) == NULL) {
+                    // Check if method name matches the filter fully
+                    char full[512];
+                    snprintf(full, sizeof(full), "%s%s", method->name, method->signature ? method->signature : "");
+                    if (strstr(full, method_obj->valuestring) == NULL) continue;
+                }
+
+                char *flow = smali_flow_generate(method, method->name);
+                if (flow && strlen(flow) > 0) {
+                    cJSON *mobj = cJSON_CreateObject();
+                    snprintf(sig, sizeof(sig), "%s%s", method->name, method->signature ? method->signature : "");
+                    cJSON_AddStringToObject(mobj, "name", sig);
+                    cJSON_AddStringToObject(mobj, "kind", kind[mk]);
+                    cJSON_AddStringToObject(mobj, "flowchart", flow);
+                    cJSON_AddItemToArray(methods_arr, mobj);
+                }
+                free(flow);
+            }
+        }
+
+        cJSON_AddItemToObject(cls_obj, "methods", methods_arr);
+        cJSON_AddItemToArray(classes_arr, cls_obj);
+    }
+
+    cJSON_AddItemToObject(res, "classes", classes_arr);
     char *res_str = cJSON_PrintUnformatted(res);
     cJSON_Delete(res);
     return res_str;

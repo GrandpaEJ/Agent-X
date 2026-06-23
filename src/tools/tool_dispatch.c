@@ -174,6 +174,7 @@ cJSON* tools_get_definitions(void) {
         "{\"type\": \"function\", \"function\": {\"name\": \"smali_assemble\", \"description\": \"Assemble smali directory into a DEX file\", \"parameters\": {\"type\": \"object\", \"properties\": {\"src_dir\": {\"type\": \"string\", \"description\": \"Path to smali source directory\"}, \"out_dex\": {\"type\": \"string\", \"description\": \"Output DEX file path\"}}, \"required\": [\"src_dir\", \"out_dex\"]}}},"
         "{\"type\": \"function\", \"function\": {\"name\": \"repack_apk\", \"description\": \"Repack contents of an extracted APK folder back into a ZIP/APK\", \"parameters\": {\"type\": \"object\", \"properties\": {\"dir\": {\"type\": \"string\", \"description\": \"Path to directory with APK contents\"}, \"output\": {\"type\": \"string\", \"description\": \"Output APK path\"}}, \"required\": [\"dir\", \"output\"]}}},"
         "{\"type\": \"function\", \"function\": {\"name\": \"resign_apk\", \"description\": \"Resign an APK natively\", \"parameters\": {\"type\": \"object\", \"properties\": {\"path\": {\"type\": \"string\", \"description\": \"Path to the APK file to sign\"}, \"scheme\": {\"type\": \"string\", \"description\": \"Signing scheme (v1, v2, v3). Default: v1. Example: v1,v2,v3\"}}, \"required\": [\"path\"]}}}"
+        "{\"type\": \"function\", \"function\": {\"name\": \"smali_flow\", \"description\": \"Generate Mermaid flowcharts from smali source files showing method control flow graphs\", \"parameters\": {\"type\": \"object\", \"properties\": {\"path\": {\"type\": \"string\", \"description\": \"Path to .smali file or directory\"}, \"method\": {\"type\": \"string\", \"description\": \"Optional method name filter\"}}, \"required\": [\"path\"]}}}"
         "]";
     cJSON* array = cJSON_Parse(schema);
     if (!array) return NULL;
@@ -257,6 +258,7 @@ char* tools_execute(const char* name, cJSON* args) {
     if (strcmp(name, "repack_apk") == 0) return execute_repack_apk(args);
     if (strcmp(name, "resign_apk") == 0) return execute_resign_apk(args);
     if (strcmp(name, "zipalign") == 0) return execute_zipalign(args);
+    if (strcmp(name, "smali_flow") == 0) return execute_smali_flow(args);
     
     return execute_dynamic_skill(name, args);
 }

@@ -29,6 +29,7 @@ char* execute_smali_assemble(cJSON* args);
 char* execute_repack_apk(cJSON* args);
 char* execute_resign_apk(cJSON* args);
 char* execute_read_dex(cJSON* args);
+char* execute_smali_flow(cJSON* args);
 char* execute_zipalign(cJSON* args);
 
 // Helpers

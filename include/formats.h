@@ -55,6 +55,10 @@ void dex_free(dex_ctx *ctx);
 // Smali assembler
 int smali_assemble(const char *src_dir, const char *out_dex);
 
+// Smali flow graph
+#include "smali_flow.h"
+char* smali_flow_generate(smali_method_def_t *method, const char *method_name);
+
 // APK
 #include "crypto.h"
 int apk_sign_v1(const char *in_apk, const char *out_apk, rsa_key *key, int do_v2, int do_v3, const uint8_t *custom_cert, uint32_t custom_cert_len);

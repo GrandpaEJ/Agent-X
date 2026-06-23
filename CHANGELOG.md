@@ -16,6 +16,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [0.7.0] - 2026-06-23
+
+### Added
+- **`smali_flow` tool:** Generates Mermaid flowcharts from smali source code, showing method control flow graphs with conditional branches, switch statements, try/catch handlers, and fallthrough edges. Supports single file or directory input with optional method name filter.
+
+---
+
 ## [0.6.4] - 2026-06-23
 
 ### Fixed
