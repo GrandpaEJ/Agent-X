@@ -137,60 +137,118 @@ static void write_string_utf16(byte_buf *b, const char *str) {
     buf_w16(b, 0x0000); // Null terminator
 }
 
+// Encode a dimension string like "8.0dp" into TYPE_DIMENSION data
+static int parse_dimension(const char *val, uint32_t *out_data) {
+    char *end = NULL;
+    float num = strtof(val, &end);
+    if (!end || end == val) return -1;
+    const char *us = end;
+    // Skip whitespace
+    while (*us == ' ' || *us == '\t') us++;
+    int unit = -1;
+    if (strcmp(us, "dp") == 0 || strcmp(us, "dip") == 0) unit = 1;
+    else if (strcmp(us, "sp") == 0) unit = 2;
+    else if (strcmp(us, "px") == 0) unit = 0;
+    else if (strcmp(us, "pt") == 0) unit = 3;
+    else if (strcmp(us, "in") == 0) unit = 4;
+    else if (strcmp(us, "mm") == 0) unit = 5;
+    if (unit < 0) return -1;
+    // Find the smallest radix where (num * 2^(radix*2)) is an integer
+    int radix = 0;
+    uint32_t mantissa = 0;
+    for (; radix < 4; radix++) {
+        float scaled = num * (float)(1 << (radix * 2));
+        if (scaled == (float)(int)scaled) {
+            mantissa = (uint32_t)(int)scaled;
+            break;
+        }
+    }
+    if (radix >= 4) return -1;
+    *out_data = (mantissa << 8) | (radix << 4) | unit;
+    return 0;
+}
+
 // Parses type of attribute (0x03 string, 0x11 int, 0x12 bool, 0x01 ref)
-static void parse_attr_value(str_builder *pool, const char *val, uint8_t *out_type, uint32_t *out_data, int *out_str_idx) {
-    *out_str_idx = -1; // Default
+static void parse_attr_value(str_builder *pool, const char *val, const char *aname, uint8_t *out_type, uint32_t *out_data, int *out_str_idx) {
+    *out_str_idx = -1;
     if (!val || val[0] == '\0') {
-        *out_type = 0x03; // String
+        *out_type = 0x03;
         *out_str_idx = add_string(pool, "");
         *out_data = *out_str_idx;
         return;
     }
     
+    if (strcmp(val, "match_parent") == 0 || strcmp(val, "fill_parent") == 0) {
+        *out_type = 0x10;
+        *out_data = (uint32_t)-1;
+        return;
+    }
+    if (strcmp(val, "wrap_content") == 0) {
+        *out_type = 0x10;
+        *out_data = (uint32_t)-2;
+        return;
+    }
+    // Enums based on attribute name context
+    if (aname && strcmp(aname, "orientation") == 0) {
+        if (strcmp(val, "vertical") == 0) { *out_type = 0x10; *out_data = 1; return; }
+        if (strcmp(val, "horizontal") == 0) { *out_type = 0x10; *out_data = 0; return; }
+    }
+    if (aname && strcmp(aname, "gravity") == 0) {
+        // TODO: parse gravity strings like "center_vertical" → 0x10 etc.
+        // For now, fall through to string/other handling
+    }
     if (strcmp(val, "true") == 0) {
-        *out_type = 0x12; // TYPE_INT_BOOLEAN
+        *out_type = 0x12;
         *out_data = 0xFFFFFFFF;
-    } else if (strcmp(val, "false") == 0) {
+        return;
+    }
+    if (strcmp(val, "false") == 0) {
         *out_type = 0x12;
         *out_data = 0;
-    } else if (strncmp(val, "@ref/0x", 7) == 0) {
-        *out_type = 0x01; // TYPE_REFERENCE
+        return;
+    }
+    // Check dimension (e.g., "8.0dp", "16sp", "1px")
+    uint32_t dim_data;
+    if (parse_dimension(val, &dim_data) == 0) {
+        *out_type = 0x05;
+        *out_data = dim_data;
+        return;
+    }
+    // Check fraction (e.g., "100%", "50%p")
+    // Not implemented yet - fall through
+    if (strncmp(val, "@ref/0x", 7) == 0) {
+        *out_type = 0x01;
         *out_data = strtoul(val + 7, NULL, 16);
-    } else {
-        // Check if integer
-        char *endptr = NULL;
-        long num = strtol(val, &endptr, 10);
-        if (*endptr == '\0' && val[0] != '\0') {
-            *out_type = 0x10; // TYPE_INT_DEC
+        return;
+    }
+    // Check if integer
+    char *endptr = NULL;
+    long num = strtol(val, &endptr, 10);
+    if (*endptr == '\0' && val[0] != '\0') {
+        *out_type = 0x10;
+        *out_data = (uint32_t)num;
+        return;
+    }
+    // Check if hex integer
+    if (strncmp(val, "0x", 2) == 0 || strncmp(val, "0X", 2) == 0) {
+        num = strtol(val, &endptr, 16);
+        if (*endptr == '\0') {
+            *out_type = 0x11;
             *out_data = (uint32_t)num;
             return;
         }
-        
-        // Check if hex integer
-        if (strncmp(val, "0x", 2) == 0 || strncmp(val, "0X", 2) == 0) {
-            num = strtol(val, &endptr, 16);
-            if (*endptr == '\0') {
-                *out_type = 0x11; // TYPE_INT_HEX
-                *out_data = (uint32_t)num;
-                return;
-            }
-        }
-        
-        // Floating point (optional, skipping for now, treat as string or we can add 0x04 for TYPE_FLOAT)
-        // Wait, compileSdkVersionCodename is "11", but it is a string!
-        // Android AXML allows "11" as string if the type expects string, but some attributes strictly expect ints.
-        // Actually AAPT strictly defines types based on resource definitions.
-        // For zero-dependency, compiling numbers as DEC/HEX is standard. Let's encode string index anyway so fallback works!
-        *out_str_idx = add_string(pool, val);
-        
-        if (*endptr == '\0' && val[0] != '\0') {
-            *out_type = 0x10;
-            *out_data = (uint32_t)num;
-        } else {
-            *out_type = 0x03; // TYPE_STRING
-            *out_data = *out_str_idx;
-        }
     }
+    // Check if float (e.g. "1.0" for layout_weight)
+    float fnum = strtof(val, &endptr);
+    if (endptr != val && *endptr == '\0') {
+        *out_type = 0x04;
+        memcpy(out_data, &fnum, 4);
+        return;
+    }
+    // Fallback: string
+    *out_str_idx = add_string(pool, val);
+    *out_type = 0x03;
+    *out_data = *out_str_idx;
 }
 
 // Encodes AST into AXML body chunks
@@ -279,7 +337,7 @@ static void encode_node(xml_doc *doc, xml_node *node, str_builder *pool, byte_bu
             e_attrs[a_idx].ns_idx = resolved_ns ? add_string(pool, resolved_ns) : 0xFFFFFFFF;
             e_attrs[a_idx].name_idx = attr->name ? add_string(pool, attr->name) : 0xFFFFFFFF;
             
-            parse_attr_value(pool, attr->value, &e_attrs[a_idx].type, &e_attrs[a_idx].data, &e_attrs[a_idx].str_idx);
+            parse_attr_value(pool, attr->value, attr->name, &e_attrs[a_idx].type, &e_attrs[a_idx].data, &e_attrs[a_idx].str_idx);
             a_idx++;
             attr = attr->next;
         }

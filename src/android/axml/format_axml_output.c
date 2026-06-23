@@ -81,6 +81,92 @@ static const char *get_ns_prefix(const char *uri) {
     return NULL;
 }
 
+// Hardcoded android enum values for common attributes (matches aapt behavior)
+typedef struct { const char *attr; int32_t val; const char *name; } ae_t;
+static const ae_t android_enums[] = {
+    {"orientation", 0, "horizontal"}, {"orientation", 1, "vertical"},
+    {"gravity", 0x10, "center_vertical"}, {"gravity", 0x11, "fill_vertical"},
+    {"gravity", 0x30, "center"}, {"gravity", 0x31, "fill"},
+    {"gravity", 0x03, "top"}, {"gravity", 0x05, "bottom"},
+    {"gravity", 0x01, "left"}, {"gravity", 0x05, "right"}, {"gravity", 0x50, "center_horizontal"},
+    {"layout_gravity", 0x10, "center_vertical"}, {"layout_gravity", 0x11, "fill_vertical"},
+    {"layout_gravity", 0x30, "center"}, {"layout_gravity", 0x31, "fill"},
+    {"layout_gravity", 0x03, "top"}, {"layout_gravity", 0x05, "bottom"},
+    {"layout_gravity", 0x01, "left"}, {"layout_gravity", 0x05, "right"},
+    {"scrollbars", 0x100, "vertical"}, {"scrollbars", 0x200, "horizontal"},
+    {"importantForAccessibility", 0, "auto"}, {"importantForAccessibility", 1, "yes"},
+    {"importantForAccessibility", 2, "no"}, {"importantForAccessibility", 4, "noHideDescendants"},
+    {"visibility", 0, "visible"}, {"visibility", 1, "invisible"}, {"visibility", 2, "gone"},
+};
+
+static const char* fmt_typed(uint8_t type, uint32_t data, int raw_idx, const char *an, const arsc_ctx *arsc) {
+    static char buf[64];
+    if (type == 0x03 || (type == 0x01 && raw_idx >= 0)) return NULL;
+    if (type == 0x01) {
+        if (arsc) {
+            const char *resolved = arsc_lookup_id((arsc_ctx*)arsc, data);
+            if (resolved) { snprintf(buf, sizeof(buf), "@%s", resolved); return buf; }
+        }
+        snprintf(buf, sizeof(buf), "@ref/0x%08x", data);
+        return buf;
+    }
+    if (type == 0x02) {
+        if (arsc) {
+            const char *resolved = arsc_lookup_id((arsc_ctx*)arsc, data);
+            if (resolved) { snprintf(buf, sizeof(buf), "?%s", resolved); return buf; }
+        }
+        snprintf(buf, sizeof(buf), "?ref/0x%08x", data);
+        return buf;
+    }
+    if (type == 0x04) { float f; memcpy(&f, &data, 4); snprintf(buf, sizeof(buf), "%g", f); return buf; }
+    if (type == 0x05) {
+        uint32_t m = data >> 8, r = (data >> 4) & 3, u = data & 0xf;
+        float v = (float)m / (float)(1 << (r * 2));
+        const char *us = (const char*[]){"px","dp","sp","pt","in","mm"}[u < 6 ? u : 0];
+        snprintf(buf, sizeof(buf), v == (float)(int)v ? "%.1f%s" : "%g%s", v, us);
+        return buf;
+    }
+    if (type == 0x06) {
+        uint32_t m = data >> 8, r = (data >> 4) & 3, u = data & 0xf;
+        float v = (float)m / (float)(1 << (r * 2));
+        snprintf(buf, sizeof(buf), "%g%s", v, u ? "%p" : "%");
+        return buf;
+    }
+    if (type == 0x10) {
+        int32_t s = (int32_t)data;
+        if (s == -1 && an && (strstr(an, "width") || strstr(an, "height"))) return "match_parent";
+        if (s == -2 && an && (strstr(an, "width") || strstr(an, "height"))) return "wrap_content";
+        if (s == -1) return "fill_parent";
+        if (an && arsc) {
+            // For non-layout attrs, use the enum table
+            (void)arsc;
+        }
+        if (an) {
+            for (size_t i = 0; i < sizeof(android_enums)/sizeof(android_enums[0]); i++) {
+                if (strcmp(an, android_enums[i].attr) == 0 && s == android_enums[i].val)
+                    return android_enums[i].name;
+            }
+        }
+        snprintf(buf, sizeof(buf), "%d", s);
+        return buf;
+    }
+    if (type == 0x12) return data ? "true" : "false";
+    if (type >= 0x13 && type <= 0x16) { snprintf(buf, sizeof(buf), "#%08x", data); return buf; }
+    if (type == 0x11) {
+        // Check for android enums that use hex values (gravity uses hex)
+        if (an) {
+            for (size_t i = 0; i < sizeof(android_enums)/sizeof(android_enums[0]); i++) {
+                if (strcmp(an, android_enums[i].attr) == 0 && (int32_t)data == android_enums[i].val)
+                    return android_enums[i].name;
+            }
+        }
+        snprintf(buf, sizeof(buf), "0x%x", data);
+        return buf;
+    }
+    snprintf(buf, sizeof(buf), "0x%x", data);
+    return buf;
+}
+
 char *axml_get_xml(axml_ctx *ctx) {
     if (!ctx) return NULL;
     if (ctx->xml) return ctx->xml;
@@ -148,28 +234,14 @@ char *axml_get_xml(axml_ctx *ctx) {
                 append(&ctx->xml, &len, &cap, an);
                 append(&ctx->xml, &len, &cap, "=\"");
 
-                uint8_t vt = e->attr_type[a];
-                uint32_t vd = e->attr_data[a];
-
-                if (vt == 0x03 && e->attr_raw[a] >= 0) {
-                    const char *vs = get_str(ctx, e->attr_raw[a]);
-                    char *esc = escape_xml(vs);
+                const char *fs = fmt_typed(e->attr_type[a], e->attr_data[a], e->attr_raw[a], an, ctx->arsc);
+                if (fs) {
+                    char *esc = escape_xml(fs);
                     append(&ctx->xml, &len, &cap, esc ? esc : "");
                     free(esc);
-                } else if (vt == 0x01) {
-                    append_fmt(&ctx->xml, &len, &cap, "@ref/0x%08x", vd);
-                } else if (vt == 0x10 || vt == 0x13) {
-                    append_fmt(&ctx->xml, &len, &cap, "%d", (int32_t)vd);
-                } else if (vt == 0x12) {
-                    append(&ctx->xml, &len, &cap, vd ? "true" : "false");
-                } else if (vt == 0x11) {
-                    append_fmt(&ctx->xml, &len, &cap, "0x%x", vd);
-                } else if (vt == 0x04) {
-                    float f;
-                    memcpy(&f, &vd, 4);
-                    append_fmt(&ctx->xml, &len, &cap, "%g", f);
-                } else {
-                    append_fmt(&ctx->xml, &len, &cap, "0x%x", vd);
+                } else if (e->attr_raw[a] >= 0) {
+                    const char *vs = get_str(ctx, e->attr_raw[a]);
+                    if (vs) { char *esc = escape_xml(vs); append(&ctx->xml, &len, &cap, esc ? esc : ""); free(esc); }
                 }
                 append(&ctx->xml, &len, &cap, "\"");
             }

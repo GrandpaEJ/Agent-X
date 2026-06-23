@@ -30,6 +30,7 @@ axml_ctx *axml_parse(const uint8_t *data, size_t size);
 char *axml_get_xml(axml_ctx *ctx);
 void axml_free(axml_ctx *ctx);
 int axml_assemble(const char *src_xml, const char *out_axml);
+void axml_set_arsc(axml_ctx *ctx, const struct arsc_ctx *arsc);
 
 // ARSC
 arsc_ctx *arsc_parse(const uint8_t *data, size_t size);
@@ -39,6 +40,8 @@ uint8_t *arsc_build(arsc_ctx *ctx, size_t *out_size);
 void arsc_free(arsc_ctx *ctx);
 int arsc_dump_toml(const char *arsc_path, const char *toml_path);
 int arsc_compile_toml(const char *arsc_path, const char *toml_path, const char *out_arsc);
+const char *arsc_lookup_id(arsc_ctx *ctx, uint32_t res_id);
+const char *arsc_get_type_name(arsc_ctx *ctx, uint32_t pkg_id, uint8_t type_id);
 
 // DEX (reader)
 dex_ctx *dex_parse(const uint8_t *data, size_t size);
@@ -69,5 +72,6 @@ int adb_pull_file(const char *remote_path, const char *local_path);
 
 int apk_decode(const char *apk_path, const char *out_dir);
 int apk_build(const char *src_dir, const char *out_apk, const char *key_path, const char *cert_path);
+int arsc_decode_apk(const char *out_dir);
 
 #endif

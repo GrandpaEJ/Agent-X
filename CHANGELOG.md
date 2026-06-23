@@ -16,6 +16,26 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [0.6.0] - 2026-06-23
+
+### Added
+- **ARSC-Aware AXML Decoder:** Full resource ID resolution (`@ref/0x7f090004` → `@string/show_window`) by parsing the complete `resources.arsc` chunk tree (packages, types, entries).
+- **Resource XML Generation:** `decode_apk` now generates `res/values/strings.xml`, `public.xml`, `colors.xml`, `ids.xml`, `bools.xml`, `styles.xml`, and per-type resource files matching apktool's output structure.
+- **Android Enum/Flag Resolution:** Hardcoded lookup table for common attributes (orientation, gravity, visibility, scrollbars, layout_gravity) producing human-readable enum names instead of raw hex integers.
+- **Extended `arsc_parse()`:** Full package/type/entry resolution API via `arsc_lookup_id()` and `arsc_get_type_name()`, with `axml_set_arsc()` to attach resource context to the AXML decoder.
+
+### Changed
+- **`apk_decode()` pipeline:** Now decodes all AXML files (AndroidManifest.xml, res/layout/*.xml) using the `resources.arsc` context for resolved references.
+- **AXML type formatting:** Added TYPE_DIMENSION (0x05) and TYPE_FRACTION (0x06) decoding with human-readable unit suffixes (dp, sp, px, pt, in, mm, %, %p).
+- **AXML enum values:** `match_parent`/`wrap_content`/`fill_parent` layout constants now decoded from raw INT_DEC values.
+- **Color types:** INT_COLOR_ARGB8/ARGB4/RGB8/RGB4 (types 0x13-0x16) now output as hex `#aarrggbb`.
+
+### Fixed
+- **String pool static buffer corruption:** `arsc_sp_string()` static `buf` was overwritten by nested calls; type names are now `strdup`'d during parsing.
+- **Shift overflow crash:** `arsc_r32()` cast to `uint32_t` before left shifting to prevent undefined behavior on bytes with high-bit set.
+
+---
+
 ## [0.5.0] - 2026-06-13
 
 ### Added

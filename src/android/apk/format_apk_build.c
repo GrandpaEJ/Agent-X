@@ -105,6 +105,10 @@ int apk_decode(const char *apk_path, const char *out_dir) {
         }
     }
     closedir(d);
+    
+    // Decode AXML files and generate resources using ARSC context
+    arsc_decode_apk(out_dir);
+    
     return 0;
 }
 
@@ -260,6 +264,5 @@ int apk_build(const char *src_dir, const char *out_apk, const char *key_path, co
         }
         remove(tmp_unaligned);
     }
-
     return 0;
 }

@@ -3,6 +3,7 @@
 
 #include <stdint.h>
 #include <stddef.h>
+#include "formats.h"
 
 #define AXML_MAGIC 0x00080003
 
@@ -48,6 +49,7 @@ typedef struct axml_ctx {
     int *event_name;
     axml_element *elements;
     char *xml;
+    const struct arsc_ctx *arsc; // optional resource context for ref resolution
 } axml_ctx;
 
 int axml_parse_strpool(axml_ctx *ctx, const uint8_t *data, uint32_t size);

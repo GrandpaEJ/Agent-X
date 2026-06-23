@@ -159,6 +159,10 @@ axml_ctx *axml_parse(const uint8_t *data, size_t size) {
     return ctx;
 }
 
+void axml_set_arsc(axml_ctx *ctx, const struct arsc_ctx *arsc) {
+    if (ctx) ctx->arsc = arsc;
+}
+
 void axml_free(axml_ctx *ctx) {
     if (!ctx) return;
     for (int i = 0; i < ctx->pool.count; i++)
