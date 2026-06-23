@@ -16,6 +16,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [0.6.4] - 2026-06-23
+
+### Fixed
+- **Removed noisy `zip_inflate`/`unsupported method` stderr messages** during APK extraction. Non-critical extraction failures are now silently skipped.
+
+---
+
 ## [0.6.3] - 2026-06-23
 
 ### Added
