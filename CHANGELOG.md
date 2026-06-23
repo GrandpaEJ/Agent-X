@@ -22,6 +22,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Config-specific resource XMLs:** `decode_apk` now generates per-qualifier resource directories matching apktool output structure (`values-v21/`, `drawable-xhdpi-v4/`, `values-night-v8/`, `drawable-night-v25/`, etc.).
 - **ResTable_config qualifier parsing:** Reads density, uiMode (night), and sdkVersion from ARSC type chunk configs, building correct Android resource directory qualifiers.
 
+### Fixed
+- **Static buffer overwrite in `arsc_sp_string`:** Type name (`tn`) was a dangling pointer after subsequent calls; now copied to stack buffer.
+- **Resource value XMLs kept as text:** Files in `res/values*` directories are no longer AXML-encoded, preserving human-readable resource definitions.
+- **Style/complex entry rendering:** Proper `ResTable_map` parsing (12-byte entries with typed `Res_value`), resolved item attribute/value references, parent style references.
+- **Color type range:** Extended to handle ARGB8/RGB8 types (0x1C-0x1F) in addition to ARGB4 (0x13-0x16).
+
 ---
 
 ## [0.6.2] - 2026-06-23
