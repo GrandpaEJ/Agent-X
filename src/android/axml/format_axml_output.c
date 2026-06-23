@@ -67,7 +67,7 @@ static int append_fmt(char **buf, size_t *len, size_t *cap,
 
 static void indent(char **buf, size_t *len, size_t *cap, int depth) {
     for (int i = 0; i < depth; i++)
-        append(buf, len, cap, "  ");
+        append(buf, len, cap, "    ");
 }
 
 static const char *get_str(axml_ctx *ctx, int idx) {
@@ -81,23 +81,49 @@ static const char *get_ns_prefix(const char *uri) {
     return NULL;
 }
 
-// Hardcoded android enum values for common attributes (matches aapt behavior)
-typedef struct { const char *attr; int32_t val; const char *name; } ae_t;
+// Hardcoded android enum/flag values for common attributes
+typedef struct { const char *attr; int32_t val; const char *name; int is_flag; } ae_t;
 static const ae_t android_enums[] = {
     {"orientation", 0, "horizontal"}, {"orientation", 1, "vertical"},
-    {"gravity", 0x10, "center_vertical"}, {"gravity", 0x11, "fill_vertical"},
-    {"gravity", 0x30, "center"}, {"gravity", 0x31, "fill"},
-    {"gravity", 0x03, "top"}, {"gravity", 0x05, "bottom"},
-    {"gravity", 0x01, "left"}, {"gravity", 0x05, "right"}, {"gravity", 0x50, "center_horizontal"},
-    {"layout_gravity", 0x10, "center_vertical"}, {"layout_gravity", 0x11, "fill_vertical"},
-    {"layout_gravity", 0x30, "center"}, {"layout_gravity", 0x31, "fill"},
-    {"layout_gravity", 0x03, "top"}, {"layout_gravity", 0x05, "bottom"},
-    {"layout_gravity", 0x01, "left"}, {"layout_gravity", 0x05, "right"},
+    {"gravity", 0x10, "center_vertical", 1}, {"gravity", 0x70, "fill_vertical", 1},
+    {"gravity", 0x11, "center", 1}, {"gravity", 0x77, "fill", 1},
+    {"gravity", 0x30, "top", 1}, {"gravity", 0x50, "bottom", 1},
+    {"gravity", 0x03, "left", 1}, {"gravity", 0x05, "right", 1},
+    {"gravity", 0x01, "center_horizontal", 1}, {"gravity", 0x07, "fill_horizontal", 1},
+    {"gravity", 0x80, "clip_vertical", 1}, {"gravity", 0x08, "clip_horizontal", 1},
+    {"layout_gravity", 0x10, "center_vertical", 1}, {"layout_gravity", 0x70, "fill_vertical", 1},
+    {"layout_gravity", 0x11, "center", 1}, {"layout_gravity", 0x77, "fill", 1},
+    {"layout_gravity", 0x30, "top", 1}, {"layout_gravity", 0x50, "bottom", 1},
+    {"layout_gravity", 0x03, "left", 1}, {"layout_gravity", 0x05, "right", 1},
+    {"layout_gravity", 0x01, "center_horizontal", 1}, {"layout_gravity", 0x07, "fill_horizontal", 1},
     {"scrollbars", 0x100, "vertical"}, {"scrollbars", 0x200, "horizontal"},
     {"importantForAccessibility", 0, "auto"}, {"importantForAccessibility", 1, "yes"},
     {"importantForAccessibility", 2, "no"}, {"importantForAccessibility", 4, "noHideDescendants"},
     {"visibility", 0, "visible"}, {"visibility", 1, "invisible"}, {"visibility", 2, "gone"},
 };
+
+// Decompose compound flag value (e.g. gravity="top|left")
+static const char* fmt_flags(const char *an, int32_t val) {
+    static char buf[128];
+    buf[0] = '\0';
+    if (!an) return NULL;
+    int first = 1;
+    for (size_t i = 0; i < sizeof(android_enums)/sizeof(android_enums[0]); i++) {
+        if (!android_enums[i].is_flag) continue;
+        if (strcmp(an, android_enums[i].attr) != 0) continue;
+        int32_t fv = android_enums[i].val;
+        // Check if all bits of this flag are set in val
+        if ((val & fv) == fv && fv != 0) {
+            if (!first) { size_t clen = strlen(buf); snprintf(buf + clen, sizeof(buf) - clen, "|"); }
+            size_t clen = strlen(buf);
+            snprintf(buf + clen, sizeof(buf) - clen, "%s", android_enums[i].name);
+            first = 0;
+            val &= ~fv;
+        }
+    }
+    if (!first && val == 0) return buf;
+    return NULL; // doesn't fully decompose
+}
 
 static const char* fmt_typed(uint8_t type, uint32_t data, int raw_idx, const char *an, const arsc_ctx *arsc) {
     static char buf[64];
@@ -142,10 +168,14 @@ static const char* fmt_typed(uint8_t type, uint32_t data, int raw_idx, const cha
             (void)arsc;
         }
         if (an) {
+            // Check non-flag enums first (exact match)
             for (size_t i = 0; i < sizeof(android_enums)/sizeof(android_enums[0]); i++) {
-                if (strcmp(an, android_enums[i].attr) == 0 && s == android_enums[i].val)
+                if (!android_enums[i].is_flag && strcmp(an, android_enums[i].attr) == 0 && s == android_enums[i].val)
                     return android_enums[i].name;
             }
+            // Try flag decomposition
+            const char *ff = fmt_flags(an, s);
+            if (ff) return ff;
         }
         snprintf(buf, sizeof(buf), "%d", s);
         return buf;
@@ -153,12 +183,9 @@ static const char* fmt_typed(uint8_t type, uint32_t data, int raw_idx, const cha
     if (type == 0x12) return data ? "true" : "false";
     if (type >= 0x13 && type <= 0x16) { snprintf(buf, sizeof(buf), "#%08x", data); return buf; }
     if (type == 0x11) {
-        // Check for android enums that use hex values (gravity uses hex)
         if (an) {
-            for (size_t i = 0; i < sizeof(android_enums)/sizeof(android_enums[0]); i++) {
-                if (strcmp(an, android_enums[i].attr) == 0 && (int32_t)data == android_enums[i].val)
-                    return android_enums[i].name;
-            }
+            const char *ff = fmt_flags(an, (int32_t)data);
+            if (ff) return ff;
         }
         snprintf(buf, sizeof(buf), "0x%x", data);
         return buf;
@@ -204,24 +231,8 @@ char *axml_get_xml(axml_ctx *ctx) {
             }
             append(&ctx->xml, &len, &cap, name);
 
-            // Check if we need to emit namespaces
-            int ns_out = 0;
-            for (int j = 0; j < ns_depth; j++) {
-                int ei = ns_stack[j];
-                const char *p = get_str(ctx, ctx->event_ns[ei]);
-                const char *u = get_str(ctx, ctx->event_name[ei]);
-                if (p && u) {
-                    append_fmt(&ctx->xml, &len, &cap,
-                        " xmlns:%s=\"%s\"", p, u);
-                    ns_out = 1;
-                }
-            }
-            if (!ns_out && ns && ns[0]) {
-                append_fmt(&ctx->xml, &len, &cap,
-                    " xmlns=\"%s\"", ns);
-            }
-
             axml_element *e = &ctx->elements[i];
+            int has_attrs = e->attr_count > 0;
             for (int a = 0; a < e->attr_count; a++) {
                 const char *an = get_str(ctx, e->attr_name[a]);
                 if (!an) continue;
@@ -244,6 +255,21 @@ char *axml_get_xml(axml_ctx *ctx) {
                     if (vs) { char *esc = escape_xml(vs); append(&ctx->xml, &len, &cap, esc ? esc : ""); free(esc); }
                 }
                 append(&ctx->xml, &len, &cap, "\"");
+            }
+
+            // Emit namespaces after attributes (apktool style)
+            for (int j = 0; j < ns_depth; j++) {
+                int ei = ns_stack[j];
+                const char *p = get_str(ctx, ctx->event_ns[ei]);
+                const char *u = get_str(ctx, ctx->event_name[ei]);
+                if (p && u) {
+                    if (has_attrs) { append(&ctx->xml, &len, &cap, "\n"); indent(&ctx->xml, &len, &cap, depth + 1); }
+                    append_fmt(&ctx->xml, &len, &cap, " xmlns:%s=\"%s\"", p, u);
+                }
+            }
+            if (ns_depth == 0 && ns && ns[0]) {
+                if (has_attrs) { append(&ctx->xml, &len, &cap, "\n"); indent(&ctx->xml, &len, &cap, depth + 1); }
+                append_fmt(&ctx->xml, &len, &cap, " xmlns=\"%s\"", ns);
             }
 
             if (i + 1 < ctx->event_count && ctx->event_types[i + 1] == 3) {
