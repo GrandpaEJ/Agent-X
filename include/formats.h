@@ -44,6 +44,7 @@ int arsc_compile_toml(const char *arsc_path, const char *toml_path, const char *
 const char *arsc_lookup_id(arsc_ctx *ctx, uint32_t res_id);
 const char *arsc_get_type_name(arsc_ctx *ctx, uint32_t pkg_id, uint8_t type_id);
 uint32_t arsc_reverse_lookup(arsc_ctx *ctx, const char *type_name, const char *key_name);
+const char *arsc_attr_enum(arsc_ctx *ctx, uint32_t attr_id, int32_t value);
 
 // DEX (reader)
 dex_ctx *dex_parse(const uint8_t *data, size_t size);

@@ -161,7 +161,7 @@ static const char* fmt_flags(const char *an, int32_t val) {
     return NULL;
 }
 
-static const char* fmt_typed(uint8_t type, uint32_t data, int raw_idx, const char *an, const arsc_ctx *arsc) {
+static const char* fmt_typed(uint8_t type, uint32_t data, int raw_idx, const char *an, const arsc_ctx *arsc, uint32_t attr_res_id) {
     static char buf[64];
     if (type == 0x03 || (type == 0x01 && raw_idx >= 0)) return NULL;
     if (type == 0x01) {
@@ -204,7 +204,12 @@ static const char* fmt_typed(uint8_t type, uint32_t data, int raw_idx, const cha
             (void)arsc;
         }
         if (an) {
-            // Check non-flag enums first (exact match)
+            // Dynamic ARSC lookup first (covers ALL framework + app attrs)
+            if (arsc && attr_res_id != 0xFFFFFFFF) {
+                const char *dyn = arsc_attr_enum((arsc_ctx*)arsc, attr_res_id, s);
+                if (dyn) return dyn;
+            }
+            // Check non-flag enums next (exact match from hardcoded table)
             for (size_t i = 0; i < sizeof(android_enums)/sizeof(android_enums[0]); i++) {
                 if (!android_enums[i].is_flag && strcmp(an, android_enums[i].attr) == 0 && s == android_enums[i].val)
                     return android_enums[i].name;
@@ -220,6 +225,11 @@ static const char* fmt_typed(uint8_t type, uint32_t data, int raw_idx, const cha
     if (type >= 0x13 && type <= 0x16) { snprintf(buf, sizeof(buf), "#%08x", data); return buf; }
     if (type == 0x11) {
         if (an) {
+            // Dynamic ARSC lookup
+            if (arsc && attr_res_id != 0xFFFFFFFF) {
+                const char *dyn = arsc_attr_enum((arsc_ctx*)arsc, attr_res_id, (int32_t)data);
+                if (dyn) return dyn;
+            }
             const char *ff = fmt_flags(an, (int32_t)data);
             if (ff) return ff;
         }
@@ -281,7 +291,12 @@ char *axml_get_xml(axml_ctx *ctx) {
                 append(&ctx->xml, &len, &cap, an);
                 append(&ctx->xml, &len, &cap, "=\"");
 
-                const char *fs = fmt_typed(e->attr_type[a], e->attr_data[a], e->attr_raw[a], an, ctx->arsc);
+                // Compute attr resource ID from pool index + resmap
+                uint32_t attr_rid = 0xFFFFFFFF;
+                int ni = e->attr_name[a];
+                if (ctx->has_resmap && ni >= 0 && ni < ctx->resmap.count)
+                    attr_rid = ctx->resmap.ids[ni];
+                const char *fs = fmt_typed(e->attr_type[a], e->attr_data[a], e->attr_raw[a], an, ctx->arsc, attr_rid);
                 if (fs) {
                     char *esc = escape_xml(fs);
                     append(&ctx->xml, &len, &cap, esc ? esc : "");

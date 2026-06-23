@@ -90,6 +90,41 @@ arsc_ctx *arsc_parse(const uint8_t *data, size_t size) {
                     pkg->types[ti].entry_offsets = (const uint32_t*)(data + poff + arsc_r16(data + poff + 2));
                     pkg->types[ti].entry_data = data + poff + arsc_r32(data + poff + 16);
                     pkg->types[ti].key_pool = pkg->key_pool;
+                    
+                    // Parse attr bag entries for type 0x01 (attr) — enum/flag definitions
+                    if (tid == 1 && pkg->key_pool) {
+                        const uint32_t *eoffs = (const uint32_t*)(data + poff + arsc_r16(data + poff + 2));
+                        const uint8_t *eents = data + poff + arsc_r32(data + poff + 16);
+                        uint32_t ecount = arsc_r32(data + poff + 12);
+                        uint32_t entries_base = poff + arsc_r32(data + poff + 16);
+                        for (uint32_t ei = 0; ei < ecount && pkg->attr_entry_count < MAX_ATTR_ENTRIES; ei++) {
+                            if (eoffs[ei] == 0xFFFFFFFF) continue;
+                            const uint8_t *entry = eents + eoffs[ei];
+                            uint16_t eflags = arsc_r16(entry + 2);
+                            if (!(eflags & 0x0001)) continue;
+                            uint16_t esize = arsc_r16(entry);
+                            uint32_t attr_res_id = ((uint32_t)pkg->id << 24) | ((uint32_t)tid << 16) | ei;
+                            // ResTable_map_entry layout: ResTable_entry(8) + parent(4) + count(4) + map_entries
+                            if (esize < 16) continue;
+                            uint32_t map_count = arsc_r32(entry + 12);
+                            const uint8_t *map_start = entry + esize;
+                            uint32_t abs_map_off = entries_base + eoffs[ei] + esize;
+                            uint32_t map_avail = (poff + pcs) - abs_map_off;
+                            for (uint32_t mi = 0; mi < map_count && mi * 8 + 8 <= map_avail; mi++) {
+                                if (pkg->attr_entry_count >= MAX_ATTR_ENTRIES) break;
+                                uint32_t map_name = arsc_r32(map_start + mi * 8);
+                                uint32_t map_value = arsc_r32(map_start + mi * 8 + 4);
+                                // Look up the key name for this resource ID
+                                const char *val_name = arsc_lookup_id(ctx, map_name);
+                                if (val_name) {
+                                    arsc_attr_map *am = &pkg->attr_entries[pkg->attr_entry_count++];
+                                    am->attr_id = attr_res_id;
+                                    am->value = (int32_t)map_value;
+                                    am->name = strdup(val_name);
+                                }
+                            }
+                        }
+                    }
                 }
                 poff += pcs;
             }
@@ -159,6 +194,18 @@ uint32_t arsc_reverse_lookup(arsc_ctx *ctx, const char *type_name, const char *k
     return 0xFFFFFFFF;
 }
 
+const char *arsc_attr_enum(arsc_ctx *ctx, uint32_t attr_id, int32_t value) {
+    if (!ctx) return NULL;
+    for (int p = 0; p < ctx->package_count; p++) {
+        for (int i = 0; i < ctx->packages[p].attr_entry_count; i++) {
+            if (ctx->packages[p].attr_entries[i].attr_id == attr_id &&
+                ctx->packages[p].attr_entries[i].value == value)
+                return ctx->packages[p].attr_entries[i].name;
+        }
+    }
+    return NULL;
+}
+
 const char *arsc_get_type_name(arsc_ctx *ctx, uint32_t pkg_id, uint8_t type_id) {
     if (!ctx) return NULL;
     for (int p = 0; p < ctx->package_count; p++) {
@@ -206,6 +253,9 @@ void arsc_free(arsc_ctx *ctx) {
     for (int p = 0; p < ctx->package_count; p++) {
         for (int t = 0; t < ctx->packages[p].type_count; t++) {
             free((void*)ctx->packages[p].types[t].name);
+        }
+        for (int i = 0; i < ctx->packages[p].attr_entry_count; i++) {
+            free(ctx->packages[p].attr_entries[i].name);
         }
     }
     free(ctx->patched); free(ctx->patched_strings); free(ctx->string_cache);

@@ -15,6 +15,13 @@
 
 #define MAX_PACKAGES 4
 #define MAX_TYPES 32
+#define MAX_ATTR_ENTRIES 2048
+
+typedef struct {
+    uint32_t attr_id;  // resource ID of the attribute (e.g. 0x0101001c for orientation)
+    int32_t value;     // numeric value (e.g. 1 for vertical)
+    char *name;        // human name (e.g. "vertical")
+} arsc_attr_map;
 
 typedef struct {
     const uint8_t *type_pool;     // type name string pool
@@ -35,6 +42,10 @@ typedef struct {
         const uint8_t *key_pool;       // key pool for this type
     } types[MAX_TYPES];
     int type_count;
+    
+    // Parsed attr bag entries (enum/flag definitions from ResTable_map)
+    arsc_attr_map attr_entries[MAX_ATTR_ENTRIES];
+    int attr_entry_count;
 } arsc_package;
 
 struct arsc_ctx {
