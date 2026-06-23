@@ -74,13 +74,16 @@ Build targets using static compilation with `zig cc` (or standard `gcc`):
 # Clean previous builds
 make clean
 
-# Full build (131 KB - CLI + Telegram Daemon)
+# Debug build (6.2 MB - full debug info, unoptimized)
 make        
 
-# Nano build (98 KB - Interactive CLI with history)
+# Release build (286 KB - optimized, stripped, static)
+make release
+
+# Nano build (single-command compile, no obj/)
 make nano   
 
-# Pico build (80 KB - Embedded CLI)
+# Pico build (80 KB - minimal embedded CLI)
 make pico   
 ```
 
@@ -140,9 +143,10 @@ Agent-X automatically detects, registers, and executes the tool. LLM arguments a
 
 ## 📊 Benchmarks & Footprint
 
-Agent-X is engineered for maximum efficiency. Below are the current benchmarks (v0.4.0) running on a standard Linux environment:
+Agent-X is engineered for maximum efficiency. Below are the current benchmarks (v0.7.0) running on a standard Linux environment:
 
-- **Static Binary Size**: ~167 KB (Full & Nano build)
+- **Static Binary Size (release)**: ~286 KB (full feature set, optimized & stripped)
+- **Static Binary Size (debug)**: ~6.2 MB (unoptimized, full DWARF debug info)
 - **Base RAM Footprint (Idle)**: ~1.7 MB (RSS)
 - **Peak RAM (Smali Assembly)**: ~53 MB (Assembling 113 classes into a full `.dex` file)
 - **Execution Time (Assembly)**: ~0.12 seconds
