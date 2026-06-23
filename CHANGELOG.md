@@ -16,6 +16,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [0.6.3] - 2026-06-23
+
+### Added
+- **Config-specific resource XMLs:** `decode_apk` now generates per-qualifier resource directories matching apktool output structure (`values-v21/`, `drawable-xhdpi-v4/`, `values-night-v8/`, `drawable-night-v25/`, etc.).
+- **ResTable_config qualifier parsing:** Reads density, uiMode (night), and sdkVersion from ARSC type chunk configs, building correct Android resource directory qualifiers.
+
+---
+
 ## [0.6.2] - 2026-06-23
 
 ### Fixed
