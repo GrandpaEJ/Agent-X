@@ -126,6 +126,34 @@ static void gen_values_xml(arsc_ctx *ctx, FILE *f, const char *type_name, uint8_
     fprintf(f, "</resources>\n");
 }
 
+// Helper: re-encode decoded XML back to binary AXML with ARSC context
+static int enc_xml_file(arsc_ctx *arsc, const char *xml_path) {
+    char out_path[4096];
+    snprintf(out_path, sizeof(out_path), "%s.axml", xml_path);
+    axml_assemble_set_arsc(arsc);
+    int ret = axml_assemble(xml_path, out_path);
+    axml_assemble_set_arsc(NULL);
+    if (ret == 0) rename(out_path, xml_path);
+    return ret;
+}
+
+// Walk directory and re-encode all XML files
+static void enc_xml_dir(arsc_ctx *arsc, const char *dir) {
+    DIR *d = opendir(dir);
+    if (!d) return;
+    struct dirent *ent;
+    while ((ent = readdir(d)) != NULL) {
+        if (ent->d_name[0] == '.') continue;
+        char p[4096]; snprintf(p, sizeof(p), "%s/%s", dir, ent->d_name);
+        struct stat st;
+        if (stat(p, &st) == 0) {
+            if (S_ISDIR(st.st_mode)) enc_xml_dir(arsc, p);
+            else if (strstr(ent->d_name, ".xml")) enc_xml_file(arsc, p);
+        }
+    }
+    closedir(d);
+}
+
 int arsc_decode_apk(const char *out_dir) {
     char arsc_path[4096];
     snprintf(arsc_path, sizeof(arsc_path), "%s/resources.arsc", out_dir);
@@ -233,8 +261,9 @@ int arsc_decode_apk(const char *out_dir) {
     char am_bin[4096], am_orig[4096];
     snprintf(am_bin, sizeof(am_bin), "%s/AndroidManifest.xml", out_dir);
     snprintf(am_orig, sizeof(am_orig), "%s/AndroidManifest.xml", orig_dir);
-    // The AndroidManifest was already decoded (overwritten), so we can't copy the binary
-    // In a full implementation we'd save a copy before decoding
+    // 5. Re-encode all decoded XML files back to binary AXML for round-trip
+    enc_xml_file(arsc, am_bin);
+    enc_xml_dir(arsc, out_dir);  // catches res/ subdirs
     
     arsc_free(arsc);
     free(adata);

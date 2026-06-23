@@ -125,6 +125,40 @@ const char *arsc_lookup_id(arsc_ctx *ctx, uint32_t res_id) {
     return NULL;
 }
 
+uint32_t arsc_reverse_lookup(arsc_ctx *ctx, const char *type_name, const char *key_name) {
+    if (!ctx || !type_name || !key_name) return 0xFFFFFFFF;
+    for (int p = 0; p < ctx->package_count; p++) {
+        for (int t = 0; t < ctx->packages[p].type_count; t++) {
+            if (!ctx->packages[p].types[t].name) continue;
+            if (strcmp(ctx->packages[p].types[t].name, type_name) != 0) continue;
+            uint32_t poff = ctx->packages[p].pkg_off + arsc_r16(ctx->data + ctx->packages[p].pkg_off + 2);
+            uint32_t pkg_end = ctx->packages[p].pkg_off + arsc_r32(ctx->data + ctx->packages[p].pkg_off + 4);
+            uint8_t tid = ctx->packages[p].types[t].id;
+            while (poff + 8 <= pkg_end) {
+                uint16_t pt = arsc_r16(ctx->data + poff);
+                uint32_t pcs = arsc_r32(ctx->data + poff + 4);
+                if (pcs < 8 || poff + pcs > pkg_end) break;
+                if (pt == RES_TABLE_TYPE_TYPE && ctx->data[poff + 8] == tid) {
+                    const uint32_t *offsets = (const uint32_t*)(ctx->data + poff + arsc_r16(ctx->data + poff + 2));
+                    const uint8_t *entries = ctx->data + poff + arsc_r32(ctx->data + poff + 16);
+                    uint32_t ec = arsc_r32(ctx->data + poff + 12);
+                    for (uint32_t i = 0; i < ec; i++) {
+                        if (offsets[i] == 0xFFFFFFFF) continue;
+                        const uint8_t *entry = entries + offsets[i];
+                        uint32_t key_idx = arsc_r32(entry + 4);
+                        const char *kn = arsc_sp_string(ctx->packages[p].key_pool, key_idx);
+                        if (kn && strcmp(kn, key_name) == 0)
+                            return ((uint32_t)ctx->packages[p].id << 24) | ((uint32_t)tid << 16) | i;
+                    }
+                    break; // only check first chunk
+                }
+                poff += pcs;
+            }
+        }
+    }
+    return 0xFFFFFFFF;
+}
+
 const char *arsc_get_type_name(arsc_ctx *ctx, uint32_t pkg_id, uint8_t type_id) {
     if (!ctx) return NULL;
     for (int p = 0; p < ctx->package_count; p++) {

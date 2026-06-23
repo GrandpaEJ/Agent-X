@@ -3,6 +3,7 @@
 #include <stdint.h>
 #include "format_axml_xml_parser.h"
 #include "axml_res_map.h"
+#include "formats.h"
 
 typedef struct {
     char **strings;
@@ -168,6 +169,27 @@ static int parse_dimension(const char *val, uint32_t *out_data) {
     return 0;
 }
 
+// Global ARSC context for reverse reference lookups (set via axml_assemble_set_arsc)
+static arsc_ctx *g_enc_arsc = NULL;
+
+void axml_assemble_set_arsc(arsc_ctx *arsc) { g_enc_arsc = arsc; }
+
+// Try to resolve "@type/name" format references using ARSC
+static int enc_resolve_ref(const char *val, uint32_t *out_data) {
+    if (!g_enc_arsc || val[0] != '@') return -1;
+    const char *slash = strchr(val + 1, '/');
+    if (!slash) return -1;
+    size_t tn_len = slash - (val + 1);
+    char type_name[128], key_name[256];
+    if (tn_len >= sizeof(type_name) || strlen(slash + 1) >= sizeof(key_name)) return -1;
+    memcpy(type_name, val + 1, tn_len); type_name[tn_len] = '\0';
+    strcpy(key_name, slash + 1);
+    uint32_t rid = arsc_reverse_lookup(g_enc_arsc, type_name, key_name);
+    if (rid == 0xFFFFFFFF) return -1;
+    *out_data = rid;
+    return 0;
+}
+
 // Parses type of attribute (0x03 string, 0x11 int, 0x12 bool, 0x01 ref)
 static void parse_attr_value(str_builder *pool, const char *val, const char *aname, uint8_t *out_type, uint32_t *out_data, int *out_str_idx) {
     *out_str_idx = -1;
@@ -216,10 +238,20 @@ static void parse_attr_value(str_builder *pool, const char *val, const char *ana
     }
     // Check fraction (e.g., "100%", "50%p")
     // Not implemented yet - fall through
-    if (strncmp(val, "@ref/0x", 7) == 0) {
-        *out_type = 0x01;
-        *out_data = strtoul(val + 7, NULL, 16);
-        return;
+    if (val[0] == '@') {
+        // Try resolved reference format "@type/name" first (from ARSC-aware decode)
+        uint32_t ref_data;
+        if (enc_resolve_ref(val, &ref_data) == 0) {
+            *out_type = 0x01;
+            *out_data = ref_data;
+            return;
+        }
+        // Fallback to raw "@ref/0x..." format
+        if (strncmp(val, "@ref/0x", 7) == 0) {
+            *out_type = 0x01;
+            *out_data = strtoul(val + 7, NULL, 16);
+            return;
+        }
     }
     // Check if integer
     char *endptr = NULL;
