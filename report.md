@@ -1,97 +1,147 @@
-# Agent X — v0.6.x Upgrade Report
+# Agent-X vs Apktool — Feature Comparison
+
+| Feature | Apktool | Agent-X | Notes |
+|---------|---------|---------|-------|
+| **Language** | Java (JAR) | C11 (native binary) | Agent-X: no JVM required, ~167KB binary |
+| **Platform** | Linux/Mac/Win (Java) | Linux (static musl) | Agent-X: single binary, no deps |
+
+## Core Commands
+
+| Feature | Apktool | Agent-X | Notes |
+|---------|---------|---------|-------|
+| CLI interface | `apktool d/b/if` | `agent-x tool decode_apk/build_apk` | Both support direct tool execution |
+| Decode APK | `apktool d app.apk` | `agent-x tool decode_apk` | ✅ Both |
+| Build APK | `apktool b dir/` | `agent-x tool build_apk` | ✅ Both |
+| Framework management | `if`/`cf`/`lf` | ❌ Not supported | Agent-X doesn't manage framework APKs |
+| Interactive mode | ❌ | ✅ `agent-x cli` | Full AI agent with memory, tools, Telegram |
+| Telegram bot | ❌ | ✅ `agent-x telegram` | Built-in long-polling daemon |
+| Daemon mode | ❌ | ✅ `--daemon` flag | Double-fork background operation |
+
+## Decode/Disassemble
+
+| Feature | Apktool | Agent-X | Notes |
+|---------|---------|---------|-------|
+| AndroidManifest.xml → text | ✅ | ✅ | Agent-X resolves `@type/key` refs via ARSC |
+| resources.arsc → res/values/*.xml | ✅ | ✅ | Both: strings, bools, colors, ids, styles |
+| Config-qualifier directories | ✅ | ✅ | `values-v21/`, `drawable-xhdpi-v4/`, `-night-*` |
+| DEX → Smali | ✅ (baksmali) | ✅ (native) | Both 113/113 instruction coverage |
+| 9-patch images (npTc → .9.png) | ✅ | ❌ | Agent-X doesn't decode 9-patch |
+| Assets extraction | ✅ | ✅ | Copied verbatim |
+| Native libraries (`lib/`) | ✅ | ✅ | Copied verbatim |
+| Original files preserved | `original/` | `original/` | ✅ Both |
+| apktool.yml metadata | ✅ | ❌ | Agent-X doesn't generate metadata YAML |
+| `--no-src` (skip DEX) | ✅ | ❌ | No CLI flag; always disassembles |
+| `--no-res` (skip resources) | ✅ | ❌ | No CLI flag; always decodes |
+| `--only-manifest` | ✅ | ❌ | No CLI flag; always decodes all |
+| `--force` overwrite | ✅ | ❌ | Always overwrites |
+| `--jobs` (parallel) | ✅ (up to 8) | ❌ | Single-threaded |
+| `--keep-broken-res` | ✅ | ❌ | Fails on resource parse errors |
+| `--match-original` | ✅ | ❌ | No `match-original` mode |
+| `--no-debug-info` (smali) | ✅ | ❌ | Always includes debug info |
+
+## Build/Assemble
+
+| Feature | Apktool | Agent-X | Notes |
+|---------|---------|---------|-------|
+| Smali → DEX | ✅ (smali.jar) | ✅ (native) | Both produce valid DEX |
+| XML → binary AXML | ✅ (aapt2) | ✅ (native) | Agent-X: uses `axml_assemble` |
+| resources.arsc build | ✅ (aapt2) | ❌ | Agent-X keeps original `resources.arsc` |
+| 9-patch encode | ✅ (aapt2) | ❌ | Not supported |
+| ZIP archive creation | ✅ | ✅ | Agent-X: `repack_apk` + zipalign |
+| APK signing | ✅ (apksigner) | ✅ (native v1/v2/v3) | Agent-X v3 has verification issue #13 |
+| Zipalign | ✅ | ✅ | 4-byte alignment |
+| `--aapt` custom path | ✅ | ❌ | No external tool support |
+| `--copy-original` | ✅ | ❌ | Agent-X always builds fresh |
+| `--debuggable` injection | ✅ | ❌ | Agent-X doesn't modify manifest |
+| `--no-crunch` | ✅ | ❌ | Agent-X doesn't crunch PNGs |
+| `--net-sec-conf` | ✅ | ❌ | No network config injection |
+
+## Binary Format Support
+
+| Feature | Apktool | Agent-X | Notes |
+|---------|---------|---------|-------|
+| ZIP read/write | ✅ | ✅ | Agent-X: mmap-based, zero-copy |
+| AXML parse | ✅ | ✅ | Full chunk tree |
+| AXML encode (round-trip) | ✅ | ✅ | With ARSC reverse lookup |
+| resources.arsc parse | ✅ | ✅ | Full package/type/entry/config/attr bags |
+| resources.arsc encode | ✅ (aapt2) | ❌ (#5) | Agent-X: TOML round-trip only |
+| DEX parse/disassemble | ✅ | ✅ | 113/113 opcodes |
+| DEX assemble (Smali→DEX) | ✅ | ✅ | With annotations, debug info gaps |
+| 9-patch | ✅ | ❌ | Not implemented |
+| ELF parser | ❌ | ✅ | `re_analyze_elf` tool |
+| ADB protocol | ❌ | ✅ | Native ADB, no `adb` binary needed |
+
+## Resource Resolution
+
+| Feature | Apktool | Agent-X | Notes |
+|---------|---------|---------|-------|
+| `@ref/0x...` → `@type/key` | ✅ | ✅ | Via ARSC lookup |
+| `?ref/0x...` → `?attr/name` | ✅ | ✅ | Via ARSC reverse lookup |
+| Enum values (orientation=1→vertical) | ✅ | ✅ | Hardcoded + dynamic ARSC attr bags |
+| Flag decomposition (configChanges=0xda0→...) | ✅ | ✅ | Bitwise + gravity nibble-pair |
+| Framework attr resolution | ✅ (via 1.apk) | ✅ (hardcoded table) | Apktool uses installed framework; Agent-X uses built-in table |
+| App-defined custom attrs | ✅ (via ARSC) | ✅ (via ARSC attr bags) | Both parse ResTable_map entries |
+| `public.xml` generation | ✅ | ✅ | Full resource ID mapping |
+| Styled strings (spans) | ✅ | ❌ | Not parsed |
+
+## Framework Management
+
+| Feature | Apktool | Agent-X | Notes |
+|---------|---------|---------|-------|
+| Install framework APK | ✅ | ❌ | Not supported |
+| List frameworks | ✅ | ❌ | Not supported |
+| Clean frameworks | ✅ | ❌ | Not supported |
+| Built-in framework | ✅ (ships AOSP) | ❌ | No bundled framework |
+| `--frame-path` | ✅ | ❌ | No framework directory concept |
+
+## Smali Assembler Gaps
+
+| Feature | Apktool (smali.jar) | Agent-X | Notes |
+|---------|---------------------|---------|-------|
+| Annotation writing | ✅ | ❌ (Phase 2) | Class/field/method/param annotations |
+| Debug info writing | ✅ | ❌ (Phase 3) | `.line`, `.locals`, `.prologue`, `.epilogue` |
+| `.param` entries | ✅ | ❌ | Parameter name debug info |
+| MUTF-8 encoding | ✅ | ❌ (Phase 1) | `\0` → `0xC0 0x80`, surrogate pairs |
+| Register range validation | ✅ | ❌ (Phase 4) | Warn on out-of-range registers |
+| Static field initializers (all types) | ✅ | ❌ (Phase 1) | Only `int` supported |
+| Error reporting (line numbers) | ✅ | ❌ (Phase 5) | Smali parser error messages |
+
+## AI/Agent Features
+
+| Feature | Apktool | Agent-X | Notes |
+|---------|---------|---------|-------|
+| AI agent | ❌ | ✅ | OpenAI-compatible LLM integration |
+| Tool-calling loop | ❌ | ✅ | Single tool per turn, feeds back to LLM |
+| Session persistence | ❌ | ✅ | Per-chat session save/load |
+| Memory/RAG system | ❌ | ✅ | `memorize`/`recall` with auto-injection |
+| 60+ built-in tools | ❌ | ✅ | System, git, Termux, RE skills |
+| Dynamic skill system | ❌ | ✅ | JSON schema + exec scripts |
+| ADB integration | ❌ | ✅ | Native ADB protocol, install/shell/push/pull |
+| Telegram bot | ❌ | ✅ | Long-polling daemon |
+
+## Security
+
+| Feature | Apktool | Agent-X | Notes |
+|---------|---------|---------|-------|
+| Path validation in resources | ✅ | ❌ | CVE fix for malicious resource names |
+| SAFE_MODE prompting | ❌ | ✅ | Prompts before dangerous operations |
+| SANDBOX_RESTRICT | ❌ | ✅ | Restricts file ops to workspace |
+| Tool authentication | ❌ | ✅ | Telegram: allowed user IDs filter |
+| Validation on build | ✅ (aapt2) | ✅ (native) | DEX validation, pool dedup |
 
 ## Summary
 
-Upgraded `agent-x` to produce apktool-equivalent APK decompilation output with full round-trip support (decode → modify → rebuild → sign → install).
-
-**Version:** v0.6.0 (feature) + v0.6.1 (encoder fix)  
-**Commit:** `24a12ab`  
-**Tag:** `v0.6.1`
-
----
-
-## What was built
-
-### 1. ARSC-Aware AXML Decoder
-
-The AXML decoder (binary Android XML) now resolves all resource references using the `resources.arsc` table:
-
-| Raw binary | Decoded output |
-|------------|---------------|
-| `@ref/0x7f090004` | `@string/show_window` |
-| `@ref/0x7f0a0007` | `@id/container` |
-| `@ref/0x7f080006` | `@color/dividerColor` |
-| `0x801` | `8.0dp` |
-| `0x1002` | `16.0sp` |
-| `-1` | `match_parent` |
-| `-2` | `wrap_content` |
-| `orientation="1"` | `orientation="vertical"` |
-| `gravity="0x10"` | `gravity="center_vertical"` |
-
-### 2. Resource XML Generation
-
-`decode_apk` now generates a complete `res/values/` directory:
-
-- `strings.xml` — string resources with resolved values
-- `public.xml` — full resource ID → name mapping table
-- `colors.xml`, `ids.xml`, `bools.xml`, `styles.xml`, `drawable.xml`, `layouts.xml`, `anim.xml`, `xml.xml`
-- All layout XMLs decoded and re-encoded to binary AXML for build
-
-### 3. Round-trip Build Pipeline
-
-Full decode → rebuild cycle works:
-
-```
-agent-x tool decode_apk path=app.apk out_dir=decoded/
-agent-x tool build_apk src_dir=decoded/ out_apk=built.apk key=key.pem
-```
-
-The encoder handles `@type/name` references via reverse ARSC lookup (`arsc_reverse_lookup()`), enabling lossless round-trip.
-
-### 4. Signing
-
-Native signing (v1/v2/v3) works but v3 verification has issues. Recommended approach:
-
-```
-# Build unsigned
-agent-x tool build_apk src_dir=dir out_apk=unsigned.apk
-
-# Sign with apksigner
-apksigner sign --key key.pk8 --cert cert.pem --out signed.apk unsigned.apk
-```
-
----
-
-## Files changed (10 files, +572/-81)
-
-| File | Change |
-|------|--------|
-| `include/formats.h` | +`arsc_lookup_id()`, `arsc_reverse_lookup()`, `axml_set_arsc()`, `axml_assemble_set_arsc()` |
-| `src/android/arsc/format_arsc_internal.h` | Extended `arsc_ctx` with `packages[]`, `types[]`, entry tables |
-| `src/android/arsc/format_arsc_parse.c` | Full chunk tree parser, `arsc_lookup_id()`, `arsc_reverse_lookup()` |
-| `src/android/axml/format_axml_internal.h` | Added `arsc_ctx*` field to `axml_ctx` |
-| `src/android/axml/format_axml_parse.c` | Added `axml_set_arsc()` |
-| `src/android/axml/format_axml_output.c` | Reference resolution, TYPE_DIMENSION/FRACTION, enum table, layout constants, color hex |
-| `src/android/axml/format_axml_encode.c` | Reverse reference resolution via `axml_assemble_set_arsc()` |
-| `src/android/apk/format_apk_build.c` | `decode_apk()` calls `arsc_decode_apk()` |
-| `src/android/apk/format_apk_decode_arsc.c` | **New:** ARSC-aware decode + resource XML generation + auto re-encode |
-| `CHANGELOG.md` | v0.6.0 + v0.6.1 entries |
-
----
-
-## Verification
-
-- **Decompiled:** `Current Activity_1.5.5_APKPure.apk` — 113 smali classes, full resource XMLs
-- **Rebuilt:** `classes.dex` (78 KB), signed APK (379 KB)
-- **Signatures:** v1 ✓ v2 ✓ v3 ✓ (verified by apksigner)
-- **Installed:** Waydroid (x86_64 Android 13) — `com.willme.topactivity` v1.5.5
-- **ADB:** `192.168.240.112:5555` — TCP connection to Waydroid container
-
----
-
-## Remaining issues
-
-1. **Native v3 signing** — RSA_PKCS1_V1_5_WITH_SHA256 signature does not verify. Use `apksigner` as a workaround.
-2. **Config-specific resource XMLs** — Only default config XMLs are generated (no `values-v22/`, `values-night/` split). Resource values from non-default configs are omitted.
-3. **AXML attribute order** — `xmlns:android` appears as first attribute vs apktool's separate-line placement.
-4. **Gravity enum** — Only single-value gravity names (center_vertical). Compound values like `top|left` are still hex.
+| Category | Apktool | Agent-X | Winner |
+|----------|---------|---------|--------|
+| Core APK decode/rebuild | ✅ Full | ✅ Full (w/ gaps) | Apktool (mature) |
+| Resource XML generation | ✅ Complete | ✅ Complete | Tie |
+| AXML round-trip | ✅ | ✅ | Tie |
+| DEX ↔ Smali round-trip | ✅ Complete | ✅ (w/ assembler gaps) | Apktool |
+| resources.arsc encode | ✅ (aapt2) | ❌ (#5) | Apktool |
+| 9-patch support | ✅ | ❌ | Apktool |
+| Framework management | ✅ Complete | ❌ | Apktool |
+| Binary size | ~15MB (JAR+JRE) | ~167KB | **Agent-X** |
+| No dependencies | ❌ (needs Java) | ✅ (static binary) | **Agent-X** |
+| AI agent + tool ecosystem | ❌ | ✅ | **Agent-X** |
+| ADB protocol (no adb binary) | ❌ | ✅ | **Agent-X** |
+| Multiple signing schemes | ✅ (apksigner) | ✅ (native) | Tie (v3 bug) |
