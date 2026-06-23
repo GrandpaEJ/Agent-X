@@ -6,6 +6,68 @@
 #include <dirent.h>
 #include <sys/stat.h>
 
+// Build Android resource qualifier string from ResTable_config (at chunk+20)
+static void build_config_str(const uint8_t *chunk, char *out, size_t out_sz) {
+    out[0] = '\0';
+    uint32_t cfg_sz = arsc_r32(chunk + 20);
+    if (cfg_sz < 20) return;
+    
+    // Fields at standard offsets in ResTable_config for cfg_sz >= 56
+    uint16_t density = arsc_r16(chunk + 34);  // offset 14 from config start
+    uint8_t ui_mode = chunk[49];               // offset 29 (byte 29)
+    uint16_t sdk = arsc_r16(chunk + 44);       // offset 24 from config start
+    uint8_t screen_layout = chunk[48];         // offset 28 (byte 28)
+    
+    // Check if default config (all zeros after size)
+    if (density == 0 && ui_mode == 0 && sdk == 0) return;
+    
+    // Build qualifier segments in standard order
+    char buf[256] = "";
+    
+    // Layout direction: screen_layout bit 3 = 0x08 for RTL? Let me check.
+    // Actually layout direction is at screenLayout2, not screenLayout.
+    // Skip for now - handle the common ones.
+    
+    // Density
+    if (density != 0 && density != 0xFFFF) {
+        const char *dstr = NULL;
+        if (density == 120) dstr = "ldpi";
+        else if (density == 160) dstr = "mdpi";
+        else if (density == 213) dstr = "tvdpi";
+        else if (density == 240) dstr = "hdpi";
+        else if (density == 280) dstr = "280dpi";
+        else if (density == 320) dstr = "xhdpi";
+        else if (density == 360) dstr = "360dpi";
+        else if (density == 400) dstr = "400dpi";
+        else if (density == 420) dstr = "420dpi";
+        else if (density == 480) dstr = "xxhdpi";
+        else if (density == 560) dstr = "560dpi";
+        else if (density == 640) dstr = "xxxhdpi";
+        if (dstr) {
+            if (buf[0]) strcat(buf, "-");
+            strcat(buf, dstr);
+        }
+    }
+    
+    // UI mode (night)
+    if (ui_mode & 0x20) {
+        if (buf[0]) strcat(buf, "-");
+        strcat(buf, "night");
+    }
+    
+    // SDK version (must be last)
+    if (sdk != 0) {
+        char sv[32];
+        snprintf(sv, sizeof(sv), "-v%u", sdk);
+        if (buf[0]) strcat(buf, sv);
+        else snprintf(buf, sizeof(buf), "%s", sv + 1); // skip leading "-"
+    }
+    
+    if (buf[0]) {
+        snprintf(out, out_sz, "-%s", buf);
+    }
+}
+
 static int mkdir_p(const char *path) {
     char tmp[1024];
     snprintf(tmp, sizeof(tmp), "%s", path);
@@ -71,57 +133,31 @@ static void esc_xml(FILE *f, const char *s) {
     }
 }
 
-static void gen_values_xml(arsc_ctx *ctx, FILE *f, const char *type_name, uint8_t type_id) {
+// Write entries from a specific type chunk to an XML file
+static void write_type_chunk_xml(arsc_ctx *ctx, arsc_package *pkg, FILE *f,
+    const char *type_name, uint32_t poff) {
+    const uint32_t *offs = (const uint32_t*)(ctx->data + poff + arsc_r16(ctx->data + poff + 2));
+    const uint8_t *ents = ctx->data + poff + arsc_r32(ctx->data + poff + 16);
+    uint32_t ec = arsc_r32(ctx->data + poff + 12);
     fprintf(f, "<?xml version=\"1.0\" encoding=\"utf-8\"?>\n<resources>\n");
-    for (int p = 0; p < ctx->package_count; p++) {
-        if (ctx->packages[p].name[0] == '\0') continue;
-        // Find the first type chunk for this type ID (default config, has all entries)
-        uint32_t poff = ctx->packages[p].pkg_off + arsc_r16(ctx->data + ctx->packages[p].pkg_off + 2);
-        uint32_t pkg_end = ctx->packages[p].pkg_off + arsc_r32(ctx->data + ctx->packages[p].pkg_off + 4);
-        const uint32_t *first_offsets = NULL;
-        const uint8_t *first_entries = NULL;
-        uint32_t first_ec = 0;
-        while (poff + 8 <= pkg_end) {
-            uint16_t pt = arsc_r16(ctx->data + poff);
-            uint32_t pcs = arsc_r32(ctx->data + poff + 4);
-            if (pcs < 8 || poff + pcs > pkg_end) break;
-            if (pt == RES_TABLE_TYPE_TYPE && ctx->data[poff + 8] == type_id) {
-                if (!first_offsets) { // first match only
-                    first_offsets = (const uint32_t*)(ctx->data + poff + arsc_r16(ctx->data + poff + 2));
-                    first_entries = ctx->data + poff + arsc_r32(ctx->data + poff + 16);
-                    first_ec = arsc_r32(ctx->data + poff + 12);
-                }
-            }
-            poff += pcs;
-        }
-        if (!first_offsets || !first_entries) continue;
-        for (uint32_t i = 0; i < first_ec; i++) {
-            if (first_offsets[i] == 0xFFFFFFFF) continue;
-            const uint8_t *entry = first_entries + first_offsets[i];
-            uint16_t eflags = arsc_r16(entry + 2);
-            uint32_t key_idx = arsc_r32(entry + 4);
-            const char *kname = arsc_sp_string(ctx->packages[p].key_pool, key_idx);
-            if ((eflags & 0x0001) || !kname) continue;
-            const uint8_t *val = entry + arsc_r16(entry);
-            uint8_t dt = val[3];
-            uint32_t dv = arsc_r32(val + 4);
-            fprintf(f, "  <%s name=\"%s\">", type_name, kname);
-            if (dt == 0x03) {
-                const char *s = arsc_get_string(ctx, dv);
-                esc_xml(f, s ? s : "");
-            } else if (dt == 0x01) {
-                const char *r = arsc_lookup_id(ctx, dv);
-                if (r) fprintf(f, "@%s", r);
-                else fprintf(f, "@ref/0x%08x", dv);
-            } else if (dt == 0x10 || dt == 0x11) {
-                fprintf(f, "%d", (int32_t)dv);
-            } else if (dt == 0x12) {
-                fputs(dv ? "true" : "false", f);
-            } else if (dt >= 0x13 && dt <= 0x16) {
-                fprintf(f, "#%08x", dv);
-            }
-            fprintf(f, "</%s>\n", type_name);
-        }
+    for (uint32_t i = 0; i < ec; i++) {
+        if (offs[i] == 0xFFFFFFFF) continue;
+        const uint8_t *entry = ents + offs[i];
+        uint16_t eflags = arsc_r16(entry + 2);
+        if (eflags & 0x0001) continue; // skip complex entries for now
+        uint32_t key_idx = arsc_r32(entry + 4);
+        const char *kname = arsc_sp_string(pkg->key_pool, key_idx);
+        if (!kname) continue;
+        const uint8_t *val = entry + arsc_r16(entry);
+        uint8_t dt = val[3];
+        uint32_t dv = arsc_r32(val + 4);
+        fprintf(f, "  <%s name=\"%s\">", type_name, kname);
+        if (dt == 0x03) { const char *s = arsc_get_string(ctx, dv); esc_xml(f, s ? s : ""); }
+        else if (dt == 0x01) { const char *r = arsc_lookup_id(ctx, dv); if (r) fprintf(f, "@%s", r); else fprintf(f, "@ref/0x%08x", dv); }
+        else if (dt == 0x10 || dt == 0x11) { fprintf(f, "%d", (int32_t)dv); }
+        else if (dt == 0x12) { fputs(dv ? "true" : "false", f); }
+        else if (dt >= 0x13 && dt <= 0x16) { fprintf(f, "#%08x", dv); }
+        fprintf(f, "</%s>\n", type_name);
     }
     fprintf(f, "</resources>\n");
 }
@@ -175,40 +211,68 @@ int arsc_decode_apk(const char *out_dir) {
     // 1. Decode all AXML files with ARSC context
     dec_dir(arsc, out_dir);
     
-    // 2. Generate res/values/ XML files from ARSC
-    char values_dir[4096];
-    snprintf(values_dir, sizeof(values_dir), "%s/res/values", out_dir);
-    mkdir_p(values_dir);
-    
-    // Generate strings.xml for type 0x03 (string)
-    char spath[4096];
-    snprintf(spath, sizeof(spath), "%s/strings.xml", values_dir);
-    FILE *sf = fopen(spath, "w");
-    if (sf) { gen_values_xml(arsc, sf, "string", 3); fclose(sf); }
-    
-    // Check for type IDs in the ARSC and generate appropriate files
+    // 2. Generate res/values/ XML files from ARSC (per-config)
     for (int p = 0; p < arsc->package_count; p++) {
-        for (int t = 0; t < arsc->packages[p].type_count; t++) {
-            uint8_t tid = arsc->packages[p].types[t].id;
-            const char *tn = arsc->packages[p].types[t].name;
-            if (!tn) continue;
-            // Map type IDs to common names
-            char fname[64];
-            if (strcmp(tn, "string") == 0) continue; // already done
-            snprintf(fname, sizeof(fname), "%s.xml", tn);
-            // Check if file already exists
-            char fpath[4096];
-            snprintf(fpath, sizeof(fpath), "%s/%s", values_dir, fname);
-            FILE *tf = fopen(fpath, "r");
-            if (tf) { fclose(tf); continue; } // skip existing
-            tf = fopen(fpath, "w");
-            if (tf) { gen_values_xml(arsc, tf, tn, tid); fclose(tf); }
+        uint32_t poff = arsc->packages[p].pkg_off + arsc_r16(arsc->data + arsc->packages[p].pkg_off + 2);
+        uint32_t pkg_end = arsc->packages[p].pkg_off + arsc_r32(arsc->data + arsc->packages[p].pkg_off + 4);
+        while (poff + 8 <= pkg_end) {
+            uint16_t pt = arsc_r16(arsc->data + poff);
+            uint32_t pcs = arsc_r32(arsc->data + poff + 4);
+            if (pcs < 8 || poff + pcs > pkg_end) break;
+            if (pt == RES_TABLE_TYPE_TYPE) {
+                uint8_t tid = arsc->data[poff + 8];
+                const char *tn = arsc_sp_string(arsc->packages[p].type_pool, tid - 1);
+                if (!tn) { poff += pcs; continue; }
+                
+                // Build config qualifier from ResTable_config (at chunk+20)
+                char cfg_str[128] = "";
+                build_config_str(arsc->data + poff, cfg_str, sizeof(cfg_str));
+                
+                // Determine directory: res/values/ for default, res/values-{qual}/ otherwise
+                char dir[512];
+                if (cfg_str[0]) {
+                    // Map common type names to directory prefixes
+                    const char *dir_prefix = tn;
+                    // anim, color, drawable, layout, menu, xml, raw → use the type name as dir
+                    // string, bool, integer, id, style, dimen → use "values"
+                    static const char *value_types[] = {"string","bool","integer","id","style","dimen","attr","public","array","plurals","color","bools","integers","values",NULL};
+                    int is_values = 0;
+                    for (int vi = 0; value_types[vi]; vi++) {
+                        if (strcmp(tn, value_types[vi]) == 0) { is_values = 1; break; }
+                    }
+                    if (is_values) snprintf(dir, sizeof(dir), "%s/res/values%s", out_dir, cfg_str);
+                    else snprintf(dir, sizeof(dir), "%s/res/%s%s", out_dir, tn, cfg_str);
+                } else {
+                    // Default config
+                    static const char *value_types[] = {"string","bool","integer","id","style","dimen","attr","public","array","plurals","color","bools","integers","values",NULL};
+                    int is_values = 0;
+                    for (int vi = 0; value_types[vi]; vi++) {
+                        if (strcmp(tn, value_types[vi]) == 0) { is_values = 1; break; }
+                    }
+                    if (is_values) snprintf(dir, sizeof(dir), "%s/res/values", out_dir);
+                    else snprintf(dir, sizeof(dir), "%s/res/%s", out_dir, tn);
+                }
+                
+                mkdir_p(dir);
+                
+                // Write XML file for this chunk
+                char fpath[1024];
+                snprintf(fpath, sizeof(fpath), "%s/%s.xml", dir, tn);
+                // Only write if file doesn't exist yet (first chunk for this config wins)
+                FILE *tf = fopen(fpath, "r");
+                if (tf) { fclose(tf); }
+                else {
+                    tf = fopen(fpath, "w");
+                    if (tf) { write_type_chunk_xml(arsc, &arsc->packages[p], tf, tn, poff); fclose(tf); }
+                }
+            }
+            poff += pcs;
         }
     }
     
     // 3. Generate public.xml with resource ID mapping
     char ppath[4096];
-    snprintf(ppath, sizeof(ppath), "%s/public.xml", values_dir);
+    snprintf(ppath, sizeof(ppath), "%s/res/values/public.xml", out_dir);
     FILE *pf = fopen(ppath, "w");
     if (pf) {
         fprintf(pf, "<?xml version=\"1.0\" encoding=\"utf-8\"?>\n<resources>\n");
