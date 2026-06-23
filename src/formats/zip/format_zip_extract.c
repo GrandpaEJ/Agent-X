@@ -39,10 +39,9 @@ void *zip_extract_entry(zip_archive *za, int index, size_t *out_size) {
             return malloc(1);
         }
         void* out = zip_inflate(comp_data, e->comp_size, out_size);
-        if (!out) { printf("zip_inflate failed\n"); return NULL; }
+        if (!out) { return NULL; }
         return out;
     }
-    printf("unsupported method %d\n", e->method);
     return NULL;
 }
 
