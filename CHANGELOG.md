@@ -16,6 +16,24 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [0.6.2] - 2026-06-23
+
+### Fixed
+- **AXML enum resolution:** Added `launchMode` (standard/singleTop/singleTask/singleInstance), `screenOrientation` (portrait/landscape/sensor/user/etc.), `configChanges` (proper bitmask decomposition).
+- **Gravity/layout_gravity decomposition:** Replaced broken bitwise matching with correct nibble-pair encoding (top|center_horizontal etc.). No more false positives from overlapping bit positions.
+- **AXML namespace placement:** `xmlns:` declarations now emitted after regular attributes on a separate indented line, matching apktool output style.
+- **AXML indent:** Changed from 2-space to 4-space indent to match apktool.
+- **Static buffer reuse:** Fixed `fmt_flags()` buffer not being cleared between calls, causing compounded flag strings across multiple attribute values.
+
+---
+
+## [0.6.1] - 2026-06-23
+
+### Fixed
+- **AXML encoder reverse lookup:** Added `arsc_reverse_lookup()` + `axml_assemble_set_arsc()` to resolve `@type/key` references back to binary `TYPE_REFERENCE` during re-encoding, enabling lossless round-trip (decode → encode → build).
+
+---
+
 ## [0.6.0] - 2026-06-23
 
 ### Added
