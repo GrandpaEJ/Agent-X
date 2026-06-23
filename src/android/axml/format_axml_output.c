@@ -85,44 +85,80 @@ static const char *get_ns_prefix(const char *uri) {
 typedef struct { const char *attr; int32_t val; const char *name; int is_flag; } ae_t;
 static const ae_t android_enums[] = {
     {"orientation", 0, "horizontal"}, {"orientation", 1, "vertical"},
-    {"gravity", 0x10, "center_vertical", 1}, {"gravity", 0x70, "fill_vertical", 1},
-    {"gravity", 0x11, "center", 1}, {"gravity", 0x77, "fill", 1},
-    {"gravity", 0x30, "top", 1}, {"gravity", 0x50, "bottom", 1},
-    {"gravity", 0x03, "left", 1}, {"gravity", 0x05, "right", 1},
-    {"gravity", 0x01, "center_horizontal", 1}, {"gravity", 0x07, "fill_horizontal", 1},
-    {"gravity", 0x80, "clip_vertical", 1}, {"gravity", 0x08, "clip_horizontal", 1},
-    {"layout_gravity", 0x10, "center_vertical", 1}, {"layout_gravity", 0x70, "fill_vertical", 1},
-    {"layout_gravity", 0x11, "center", 1}, {"layout_gravity", 0x77, "fill", 1},
-    {"layout_gravity", 0x30, "top", 1}, {"layout_gravity", 0x50, "bottom", 1},
-    {"layout_gravity", 0x03, "left", 1}, {"layout_gravity", 0x05, "right", 1},
-    {"layout_gravity", 0x01, "center_horizontal", 1}, {"layout_gravity", 0x07, "fill_horizontal", 1},
-    {"scrollbars", 0x100, "vertical"}, {"scrollbars", 0x200, "horizontal"},
+    {"launchMode", 0, "standard"}, {"launchMode", 1, "singleTop"},
+    {"launchMode", 2, "singleTask"}, {"launchMode", 3, "singleInstance"},
+    {"screenOrientation", 0, "unspecified"}, {"screenOrientation", 1, "portrait"},
+    {"screenOrientation", 2, "landscape"}, {"screenOrientation", 3, "user"},
+    {"screenOrientation", 4, "behind"}, {"screenOrientation", 5, "sensor"},
+    {"screenOrientation", 6, "nosensor"}, {"screenOrientation", 7, "sensorLandscape"},
+    {"screenOrientation", 8, "sensorPortrait"}, {"screenOrientation", 9, "reverseLandscape"},
+    {"screenOrientation", 10, "reversePortrait"}, {"screenOrientation", 11, "fullSensor"},
+    {"screenOrientation", 12, "userLandscape"}, {"screenOrientation", 13, "userPortrait"},
+    {"screenOrientation", 14, "locked"},
+    {"configChanges", 0x0020, "keyboardHidden", 1}, {"configChanges", 0x0080, "orientation", 1},
+    {"configChanges", 0x0100, "screenLayout", 1}, {"configChanges", 0x0200, "uiMode", 1},
+    {"configChanges", 0x0400, "screenSize", 1}, {"configChanges", 0x0800, "smallestScreenSize", 1},
+    {"configChanges", 0x0001, "mcc", 1}, {"configChanges", 0x0002, "mnc", 1},
+    {"configChanges", 0x0004, "locale", 1}, {"configChanges", 0x0008, "touchscreen", 1},
+    {"configChanges", 0x0010, "keyboard", 1}, {"configChanges", 0x0040, "navigation", 1},
+    {"configChanges", 0x1000, "fontScale", 1},
+    {"visibility", 0, "visible"}, {"visibility", 1, "invisible"}, {"visibility", 2, "gone"},
     {"importantForAccessibility", 0, "auto"}, {"importantForAccessibility", 1, "yes"},
     {"importantForAccessibility", 2, "no"}, {"importantForAccessibility", 4, "noHideDescendants"},
-    {"visibility", 0, "visible"}, {"visibility", 1, "invisible"}, {"visibility", 2, "gone"},
+    {"scrollbars", 0x100, "vertical"}, {"scrollbars", 0x200, "horizontal"},
 };
 
-// Decompose compound flag value (e.g. gravity="top|left")
+// Nibble names for gravity (horizontal nibble [3:0], vertical nibble [7:4])
+static const char* grav_nibble(uint8_t nib, int is_vert) {
+    switch (nib) {
+        case 0x00: return NULL; // no gravity = 0 on that axis
+        case 0x01: return is_vert ? NULL : "center_horizontal";
+        case 0x03: return is_vert ? NULL : "left";
+        case 0x05: return is_vert ? NULL : "right";
+        case 0x07: return is_vert ? NULL : "fill_horizontal";
+        case 0x08: return "clip_horizontal";
+        case 0x10: return is_vert ? "center_vertical" : NULL;
+        case 0x30: return is_vert ? "top" : NULL;
+        case 0x50: return is_vert ? "bottom" : NULL;
+        case 0x70: return is_vert ? "fill_vertical" : NULL;
+        case 0x80: return "clip_vertical";
+        default: return NULL;
+    }
+}
+
+// Decompose compound flag value supporting both bitmask and gravity nibble-pair
 static const char* fmt_flags(const char *an, int32_t val) {
     static char buf[128];
     buf[0] = '\0';
-    if (!an) return NULL;
+    if (!an || val == 0) return NULL;
+    
+    // Special case: gravity/layout_gravity use nibble-pair encoding
+    if ((strcmp(an, "gravity") == 0 || strcmp(an, "layout_gravity") == 0)) {
+        uint8_t h = val & 0x0F, v = (val >> 4) & 0x0F;
+        // Check for combined constants: center=0x11, fill=0x77
+        if (val == 0x11) return "center";
+        if (val == 0x77) return "fill";
+        const char *hn = grav_nibble(h, 0), *vn = grav_nibble(v, 1);
+        if (vn && hn) { snprintf(buf, sizeof(buf), "%s|%s", vn, hn); return buf; }
+        if (vn) { snprintf(buf, sizeof(buf), "%s", vn); return buf; }
+        if (hn) { snprintf(buf, sizeof(buf), "%s", hn); return buf; }
+        return NULL;
+    }
+    
+    // Bitmask flags (configChanges, etc.)
     int first = 1;
     for (size_t i = 0; i < sizeof(android_enums)/sizeof(android_enums[0]); i++) {
         if (!android_enums[i].is_flag) continue;
         if (strcmp(an, android_enums[i].attr) != 0) continue;
         int32_t fv = android_enums[i].val;
-        // Check if all bits of this flag are set in val
-        if ((val & fv) == fv && fv != 0) {
-            if (!first) { size_t clen = strlen(buf); snprintf(buf + clen, sizeof(buf) - clen, "|"); }
-            size_t clen = strlen(buf);
-            snprintf(buf + clen, sizeof(buf) - clen, "%s", android_enums[i].name);
-            first = 0;
-            val &= ~fv;
+        if (fv != 0 && (val & fv) == fv) {
+            if (!first) strcat(buf, "|");
+            strcat(buf, android_enums[i].name);
+            first = 0; val &= ~fv;
         }
     }
     if (!first && val == 0) return buf;
-    return NULL; // doesn't fully decompose
+    return NULL;
 }
 
 static const char* fmt_typed(uint8_t type, uint32_t data, int raw_idx, const char *an, const arsc_ctx *arsc) {
