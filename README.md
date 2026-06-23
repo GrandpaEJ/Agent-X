@@ -143,13 +143,17 @@ Agent-X automatically detects, registers, and executes the tool. LLM arguments a
 
 ## 📊 Benchmarks & Footprint
 
-Agent-X is engineered for maximum efficiency. Below are the current benchmarks (v0.7.0) running on a standard Linux environment:
+Agent-X is engineered for maximum efficiency. Below are the current benchmarks (v0.7.0 release, `make release`) running on a standard Linux environment:
 
-- **Static Binary Size (release)**: ~286 KB (full feature set, optimized & stripped)
-- **Static Binary Size (debug)**: ~6.2 MB (unoptimized, full DWARF debug info)
-- **Base RAM Footprint (Idle)**: ~1.7 MB (RSS)
-- **Peak RAM (Smali Assembly)**: ~53 MB (Assembling 113 classes into a full `.dex` file)
-- **Execution Time (Assembly)**: ~0.12 seconds
+| Metric | Value |
+|--------|-------|
+| **Static binary** | **286 KB** (full feature set, stripped, static musl) |
+| **Base RSS (idle)** | **3.1 MB** |
+| **smali_flow — single method** | **5–7 ms** |
+| **smali_flow — 165 methods / 41 classes** | **82–97 ms** |
+| **disasm_dex — 113 classes → smali files** | **24–37 ms** |
+| **smali_assemble — 113 classes → classes.dex** | **197–258 ms** |
+| **Peak RSS (smali_assemble)** | **87 MB** |
 
 ## 📲 Dalvik & Smali Pipelines
 
