@@ -48,6 +48,12 @@ pico:
 		src/core/main.c src/core/agent.c src/tools/tool_dispatch.c src/net/http.c src/core/logger.c \
 		$(VENDOR_DIR)/cJSON/cJSON.c $(LDFLAGS)
 
+release: OPT = -Oz
+release: LDFLAGS = -flto -Wl,--gc-sections -Wl,--strip-all
+release: $(TARGET)
+	@echo "---"
+	ls -lh $(TARGET)
+
 clean:
 	rm -rf $(OBJ_DIR) $(TARGET) agent-x-nano agent-x-pico
 
