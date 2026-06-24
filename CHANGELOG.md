@@ -19,6 +19,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **`smali_assemble` pool memory leak** (#21): `smali_pool_free()` is now called for all 5 pools after writing DEX, reclaiming ~87 MB of heap at assembly end.
 - **`apk_analyze` now supports multidex** (#18): Loops through all `classes*.dex` entries in the ZIP instead of only looking for `classes.dex`.
 - **`apk_build` cleans up compiled DEX files** (#20): Tracked DEX paths are removed from the source directory after the ZIP is finalized, preventing stale files on repeated builds.
+- **`smali_code` guards abstract/native methods** (#23): `write_code_item()` now returns 0 for abstract/native methods, ensuring they have `code_off=0` in the DEX.
 
 ---
 
