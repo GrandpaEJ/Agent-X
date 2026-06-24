@@ -57,5 +57,12 @@ int smali_assemble(const char *src_dir, const char *out_dex) {
 
     smali_pool_build_all(&ctx);
     int ret = write_assembled_dex(&ctx, out_dex);
+
+    smali_pool_free(&ctx.strings);
+    smali_pool_free(&ctx.types);
+    smali_pool_free(&ctx.protos);
+    smali_pool_free(&ctx.fields);
+    smali_pool_free(&ctx.methods);
+
     return ret;
 }
