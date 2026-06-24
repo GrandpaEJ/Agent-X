@@ -2,6 +2,7 @@
 #include "tools_internal.h"
 #include "formats.h"
 #include "smali_parser.h"
+#include "smali_pool.h"
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -149,6 +150,7 @@ char* execute_smali_flow(cJSON* args) {
         free(f);
         char *res_str = cJSON_PrintUnformatted(res);
         cJSON_Delete(res);
+        smali_ctx_free(&ctx);
         return res_str;
     }
 
@@ -202,6 +204,7 @@ char* execute_smali_flow(cJSON* args) {
     cJSON_AddItemToObject(res, "classes", classes_arr);
     char *res_str = cJSON_PrintUnformatted(res);
     cJSON_Delete(res);
+    smali_ctx_free(&ctx);
     return res_str;
 }
 

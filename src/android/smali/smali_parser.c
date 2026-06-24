@@ -323,10 +323,13 @@ int parse_smali_file_content(smali_ctx_def_t *ctx, const char *text) {
                             p = save_p; free(inner_tok); break;
                         }
                         if (strcmp(inner_tok, ".annotation") == 0) {
-                            if (field->annot_count < MAX_ANNOTS) {
-                                smali_annotation_t *ann = &field->annots[field->annot_count++];
-                                memset(ann, 0, sizeof(*ann));
-                                ann->visibility = 1;
+                            if (field->annot_count >= field->annot_cap) {
+                                field->annot_cap = field->annot_cap ? field->annot_cap * 2 : 4;
+                                field->annots = realloc(field->annots, field->annot_cap * sizeof(smali_annotation_t));
+                            }
+                            smali_annotation_t *ann = &field->annots[field->annot_count++];
+                            memset(ann, 0, sizeof(*ann));
+                            ann->visibility = 1;
                                 char *vis_tok = smali_next_token(&p);
                                 if (vis_tok) {
                                     if (strcmp(vis_tok, "runtime") == 0) ann->visibility = 1;
@@ -357,9 +360,8 @@ int parse_smali_file_content(smali_ctx_def_t *ctx, const char *text) {
                                         free(elem_tok);
                                     }
                                 }
-                            }
-                            free(inner_tok);
-                            continue;
+                                free(inner_tok);
+                                continue;
                         }
                         p = save_p;
                         free(inner_tok);
@@ -426,10 +428,13 @@ int parse_smali_file_content(smali_ctx_def_t *ctx, const char *text) {
                 free(name_sig);
             }
         } else if (strcmp(tok, ".annotation") == 0 && curr) {
-            if (curr->annot_count < MAX_ANNOTS) {
-                smali_annotation_t *ann = &curr->annots[curr->annot_count++];
-                memset(ann, 0, sizeof(*ann));
-                ann->visibility = 1;
+            if (curr->annot_count >= curr->annot_cap) {
+                curr->annot_cap = curr->annot_cap ? curr->annot_cap * 2 : 4;
+                curr->annots = realloc(curr->annots, curr->annot_cap * sizeof(smali_annotation_t));
+            }
+            smali_annotation_t *ann = &curr->annots[curr->annot_count++];
+            memset(ann, 0, sizeof(*ann));
+            ann->visibility = 1;
                 char *vis_tok = smali_next_token(&p);
                 if (vis_tok) {
                     if (strcmp(vis_tok, "runtime") == 0) ann->visibility = 1;
@@ -460,7 +465,6 @@ int parse_smali_file_content(smali_ctx_def_t *ctx, const char *text) {
                         free(elem_tok);
                     }
                 }
-            }
             continue;
         }
         int is_method = (strcmp(tok, ".method") == 0);

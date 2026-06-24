@@ -14,6 +14,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+- **Memory bloat from inline annotation arrays** (#25): `smali_field_def_t`, `smali_method_def_t`, and `smali_class_def_t` each embedded `smali_annotation_t annots[MAX_ANNOTS]` (32 slots × 3 KB = 99 KB per struct), so every class/method/field with 0 annotations still paid the full 99 KB cost. Converted to heap-allocated `smali_annotation_t *annots` with lazy grow (`annot_cap` doubles, starts at 4). Added `smali_ctx_free()` to release all per-class, per-method, per-field, per-instruction heap memory at end of `smali_assemble` and `smali_flow`. **Result: smali_assemble peak RSS on 11330-class corpus dropped from ~7.5 GB to 506 MB (15× reduction) and now uses 3× less RAM than `smali.jar` (Java).**
+
 ---
 
 ## [0.8.0] - 2026-06-24
