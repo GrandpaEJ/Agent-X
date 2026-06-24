@@ -28,6 +28,7 @@ static int comp_ranges(const void *a, const void *b) {
 }
 
 uint32_t write_code_item(smali_ctx_def_t *ctx, smali_buf_t *b, smali_method_def_t *m) {
+    if (m->access_flags & 0x0500) return 0;
     if (m->insns_count == 0 || m->insns_count > 65536) return 0;
     if (!m->insns) { fprintf(stderr, "BUG: insns is NULL for method with insns_count=%u\n", m->insns_count); return 0; }
     align_4(b);
