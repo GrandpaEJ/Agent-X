@@ -63,8 +63,20 @@ char* execute_smali_assemble(cJSON* args) {
 char* execute_smali_flow(cJSON* args) {
     cJSON* path_obj = cJSON_GetObjectItem(args, "path");
     cJSON* method_obj = cJSON_GetObjectItem(args, "method");
+    cJSON* mode_obj = cJSON_GetObjectItem(args, "mode");
+    cJSON* scope_obj = cJSON_GetObjectItem(args, "scope");
     if (!path_obj || !cJSON_IsString(path_obj))
         return strdup("{\"error\": \"Missing path to .smali file\"}");
+
+    smali_flow_mode_t mode = SMALI_FLOW_ADVANCE;
+    if (mode_obj && cJSON_IsString(mode_obj)) {
+        const char *m = mode_obj->valuestring;
+        if      (strcmp(m, "basic")   == 0) mode = SMALI_FLOW_BASIC;
+        else if (strcmp(m, "advance") == 0) mode = SMALI_FLOW_ADVANCE;
+        else if (strcmp(m, "full")    == 0) mode = SMALI_FLOW_FULL;
+    }
+    const char *scope = "method";
+    if (scope_obj && cJSON_IsString(scope_obj)) scope = scope_obj->valuestring;
 
     smali_ctx_def_t ctx;
     memset(&ctx, 0, sizeof(ctx));
@@ -125,8 +137,21 @@ char* execute_smali_flow(cJSON* args) {
         return strdup("{\"error\": \"No classes found\"}");
     }
 
-    // Generate flow graphs for each method
     cJSON *res = cJSON_CreateObject();
+    cJSON_AddStringToObject(res, "scope", scope);
+    const char *mode_str = mode == SMALI_FLOW_BASIC ? "basic" :
+                           mode == SMALI_FLOW_FULL  ? "full"  : "advance";
+    cJSON_AddStringToObject(res, "mode", mode_str);
+
+    if (strcmp(scope, "file") == 0) {
+        char *f = smali_flow_file(&ctx, mode);
+        if (f) cJSON_AddStringToObject(res, "flowchart", f);
+        free(f);
+        char *res_str = cJSON_PrintUnformatted(res);
+        cJSON_Delete(res);
+        return res_str;
+    }
+
     cJSON *classes_arr = cJSON_CreateArray();
 
     for (uint32_t ci = 0; ci < ctx.class_count; ci++) {
@@ -135,7 +160,14 @@ char* execute_smali_flow(cJSON* args) {
         cJSON_AddStringToObject(cls_obj, "class", cls->descriptor ? cls->descriptor : "");
         cJSON *methods_arr = cJSON_CreateArray();
 
-        // Process all methods (direct + virtual)
+        if (strcmp(scope, "class") == 0) {
+            char *f = smali_flow_class(cls, mode);
+            if (f) cJSON_AddStringToObject(cls_obj, "flowchart", f);
+            free(f);
+            cJSON_AddItemToArray(classes_arr, cls_obj);
+            continue;
+        }
+
         smali_method_def_t *all_methods[] = {cls->direct_methods, cls->virtual_methods};
         uint32_t all_counts[] = {cls->direct_method_count, cls->virtual_method_count};
         const char *kind[] = {"direct", "virtual"};
@@ -143,19 +175,14 @@ char* execute_smali_flow(cJSON* args) {
         for (int mk = 0; mk < 2; mk++) {
             for (uint32_t mi = 0; mi < all_counts[mk]; mi++) {
                 smali_method_def_t *method = &all_methods[mk][mi];
-                // Build method signature
                 char sig[512];
-                if (method_obj && cJSON_IsString(method_obj) &&
-                    strstr(method->name, method_obj->valuestring) == NULL &&
-                    strstr(method->signature, method_obj->valuestring) == NULL &&
-                    strstr(method->name, method_obj->valuestring) == NULL) {
-                    // Check if method name matches the filter fully
+                if (method_obj && cJSON_IsString(method_obj)) {
                     char full[512];
                     snprintf(full, sizeof(full), "%s%s", method->name, method->signature ? method->signature : "");
                     if (strstr(full, method_obj->valuestring) == NULL) continue;
                 }
 
-                char *flow = smali_flow_generate(method, method->name);
+                char *flow = smali_flow_method(method, mode);
                 if (flow && strlen(flow) > 0) {
                     cJSON *mobj = cJSON_CreateObject();
                     snprintf(sig, sizeof(sig), "%s%s", method->name, method->signature ? method->signature : "");

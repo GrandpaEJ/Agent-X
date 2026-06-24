@@ -14,6 +14,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+- **`smali_flow` 3-mode upgrade** (#24): Split into focused modules (`smali_flow_block.c` / `smali_flow_edge.c` / `smali_flow_mermaid.c` / `smali_flow_class.c`). New `mode` parameter: `basic` (control flow only — invokes/branches/returns/switches/labels), `advance` (all instructions, default), `full` (all instructions with source line numbers). New `scope` parameter: `method` (per-method), `class` (this class → methods → callees call graph), `file` (full cross-class call graph, left-to-right). Mermaid output now uses 6 color-coded shapes (stadium entry, circle return, hexagon throw, asymmetric switch, diamond cond, rectangle normal), dashed edges for try/catch with exception-type labels, and explicit `false` / `case` / `goto` edge labels.
+
 ### Fixed
 - **`repack_apk` no longer includes smali source files in ZIP** (#19): `collect_files()` now skips top-level `smali*` directories, matching `util_collect_files()` behavior.
 - **`smali_assemble` pool memory leak** (#21): `smali_pool_free()` is now called for all 5 pools after writing DEX, reclaiming ~87 MB of heap at assembly end.
