@@ -47,34 +47,30 @@ char *apk_analyze(const char *path) {
         }
     }
 
-    // Decode classes.dex
-    int dex_idx = -1;
-    for (int i = 0; i < entries; i++)
-        if (strcmp(zip_get_entry_name(za, i), "classes.dex") == 0)
-            { dex_idx = i; break; }
-
-    if (dex_idx >= 0) {
+    // Decode all classes*.dex (multidex support)
+    for (int i = 0; i < entries; i++) {
+        const char *ename = zip_get_entry_name(za, i);
+        if (strncmp(ename, "classes", 7) != 0 || !strstr(ename, ".dex")) continue;
         size_t dsize = 0;
-        void *ddata = zip_extract_entry(za, dex_idx, &dsize);
-        if (ddata && dsize > 0) {
-            dex_ctx *dx = dex_parse(ddata, dsize);
-            if (dx) {
-                char *dump = dex_dump(dx);
-                if (dump) {
-                    size_t needed = len + strlen(dump) + 50;
-                    if (needed > cap) {
-                        while (cap < needed) cap *= 2;
-                        char *n = realloc(buf, cap);
-                        if (n) buf = n;
-                    }
-                    len += snprintf(buf + len, cap - len,
-                        "=== Classes ===\n%s", dump);
+        void *ddata = zip_extract_entry(za, i, &dsize);
+        if (!ddata || dsize == 0) continue;
+        dex_ctx *dx = dex_parse(ddata, dsize);
+        if (dx) {
+            char *dump = dex_dump(dx);
+            if (dump) {
+                size_t needed = len + strlen(dump) + 50;
+                if (needed > cap) {
+                    while (cap < needed) cap *= 2;
+                    char *n = realloc(buf, cap);
+                    if (n) buf = n;
                 }
-                free(dump);
-                dex_free(dx);
+                len += snprintf(buf + len, cap - len,
+                    "=== %s ===\n%s", ename, dump);
             }
-            free(ddata);
+            free(dump);
+            dex_free(dx);
         }
+        free(ddata);
     }
 
     // List ZIP entries
