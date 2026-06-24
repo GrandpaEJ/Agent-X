@@ -42,13 +42,9 @@ int apk_decode(const char *apk_path, const char *out_dir) {
             snprintf(dex_path, sizeof(dex_path), "%s/%s", out_dir, ent->d_name);
             
             char smali_dir[1024];
-            if (strcmp(ent->d_name, "classes.dex") == 0) {
-                snprintf(smali_dir, sizeof(smali_dir), "%s/smali", out_dir);
-            } else {
-                char num[32] = {0};
-                strncpy(num, ent->d_name + 7, strlen(ent->d_name) - 11);
-                snprintf(smali_dir, sizeof(smali_dir), "%s/smali_classes%s", out_dir, num);
-            }
+            char num[32] = {0};
+            strncpy(num, ent->d_name + 7, strlen(ent->d_name) - 11);
+            snprintf(smali_dir, sizeof(smali_dir), "%s/smali_classes%s", out_dir, num);
             
             FILE *fp = fopen(dex_path, "rb");
             if (fp) {
@@ -153,13 +149,9 @@ int apk_build(const char *src_dir, const char *out_apk, const char *key_path, co
             struct stat st;
             if (stat(smali_dir, &st) == 0 && S_ISDIR(st.st_mode)) {
                 char dex_name[128];
-                if (strcmp(ent->d_name, "smali") == 0) {
-                    strcpy(dex_name, "classes.dex");
-                } else {
-                    char num[32] = {0};
-                    strncpy(num, ent->d_name + 13, strlen(ent->d_name) - 13);
-                    snprintf(dex_name, sizeof(dex_name), "classes%s.dex", num);
-                }
+                char num[32] = {0};
+                strncpy(num, ent->d_name + 13, strlen(ent->d_name) - 13);
+                snprintf(dex_name, sizeof(dex_name), "classes%s.dex", num);
                 char dex_path[1024];
                 snprintf(dex_path, sizeof(dex_path), "%s/%s", src_dir, dex_name);
                 smali_assemble(smali_dir, dex_path);
