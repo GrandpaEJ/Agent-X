@@ -141,6 +141,8 @@ static int util_collect_files(const char *base, char ***paths, int *count, const
 int apk_build(const char *src_dir, const char *out_apk, const char *key_path, const char *cert_path) {
     DIR *d = opendir(src_dir);
     if (!d) return -1;
+    char **dex_files = NULL;
+    int dex_count = 0;
     struct dirent *ent;
     while ((ent = readdir(d)) != NULL) {
         if (strncmp(ent->d_name, "smali", 5) == 0) {
@@ -155,6 +157,8 @@ int apk_build(const char *src_dir, const char *out_apk, const char *key_path, co
                 char dex_path[1024];
                 snprintf(dex_path, sizeof(dex_path), "%s/%s", src_dir, dex_name);
                 smali_assemble(smali_dir, dex_path);
+                dex_files = realloc(dex_files, (dex_count + 1) * sizeof(char *));
+                dex_files[dex_count++] = strdup(dex_path);
             }
         }
     }
@@ -191,6 +195,13 @@ int apk_build(const char *src_dir, const char *out_apk, const char *key_path, co
     }
     free(files);
     zip_writer_close(zw);
+
+    // Clean up compiled DEX files from source directory
+    for (int i = 0; i < dex_count; i++) {
+        remove(dex_files[i]);
+        free(dex_files[i]);
+    }
+    free(dex_files);
 
     if (key_path) {
         rsa_key key;
