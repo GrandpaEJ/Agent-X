@@ -143,11 +143,11 @@ Agent-X automatically detects, registers, and executes the tool. LLM arguments a
 
 ## 📊 Benchmarks & Footprint
 
-Agent-X is engineered for maximum efficiency. Below are the current benchmarks (v0.7.0 release, `make release`) running on a standard Linux environment:
+Agent-X is engineered for maximum efficiency. Below are the current benchmarks (v0.8.0 release, `make release`) running on a standard Linux environment:
 
 | Metric | Value |
 |--------|-------|
-| **Static binary** | **286 KB** (full feature set, stripped, static musl) |
+| **Static binary** | **293 KB** (full feature set, stripped, static musl) |
 | **Base RSS (idle)** | **3.1 MB** |
 | **smali_flow — single method** | **5–7 ms** |
 | **smali_flow — 165 methods / 41 classes** | **82–97 ms** |
