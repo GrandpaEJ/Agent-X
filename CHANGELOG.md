@@ -14,6 +14,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+- **`repack_apk` no longer includes smali source files in ZIP** (#19): `collect_files()` now skips top-level `smali*` directories, matching `util_collect_files()` behavior.
+- **`smali_assemble` pool memory leak** (#21): `smali_pool_free()` is now called for all 5 pools after writing DEX, reclaiming ~87 MB of heap at assembly end.
+
 ---
 
 ## [0.7.0] - 2026-06-23
