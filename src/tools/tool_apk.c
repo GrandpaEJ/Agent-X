@@ -7,7 +7,7 @@
 #include <dirent.h>
 #include <sys/stat.h>
 
-static int collect_files(const char *base, char ***paths, int *count) {
+static int collect_files(const char *base, char ***paths, int *count, const char *root_dir) {
     DIR *d = opendir(base);
     struct dirent *ent;
     if (!d) return -1;
@@ -15,9 +15,14 @@ static int collect_files(const char *base, char ***paths, int *count) {
         if (ent->d_name[0] == '.') continue;
         char p[4096];
         snprintf(p, sizeof(p), "%s/%s", base, ent->d_name);
+        // Skip smali source directories at the root level
+        if (strcmp(base, root_dir) == 0 && strncmp(ent->d_name, "smali", 5) == 0) {
+            struct stat st;
+            if (stat(p, &st) == 0 && S_ISDIR(st.st_mode)) continue;
+        }
         struct stat st;
         if (stat(p, &st) == 0 && S_ISDIR(st.st_mode)) {
-            collect_files(p, paths, count);
+            collect_files(p, paths, count, root_dir);
         } else {
             (*paths) = realloc(*paths, (*count + 1) * sizeof(char *));
             (*paths)[*count] = strdup(p);
@@ -84,7 +89,7 @@ char* execute_repack_apk(cJSON* args) {
     if (!zw) return strdup("{\"error\": \"Failed to open output APK\"}");
     char **files = NULL;
     int count = 0;
-    collect_files(dir_obj->valuestring, &files, &count);
+    collect_files(dir_obj->valuestring, &files, &count, dir_obj->valuestring);
     for (int i = 0; i < count; i++) {
         const char *path = files[i];
         const char *name = path + strlen(dir_obj->valuestring) + 1;
